@@ -4,32 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { NaverNewsArticle, fetchNaverNews } from '@/utils/naverApi';
 import Sidebar from "@/components/Sidebar";
 import Link from "next/link";
+import { usePathname } from 'next/navigation';
 
-type Category = 'IT' | 'sports' | 'economy';
-
-export default function Home() {
+export default function SportsPage() {
   const [news, setNews] = useState<NaverNewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentCategory, setCurrentCategory] = useState<Category>('IT');
-
-  // 카테고리별 배너 정보
-  const categoryBanners = {
-    IT: {
-      title: "디지털 위기에 처한 세계, IT 초강대국들의 대응",
-      description: "디지털상의 모든 정보를 통제할 수 있는 시장 조우의 무기로 인해 전 세계 국가와 조직의 기능이 마비되고, 인류 전체가 위협받는 걸 체감명의 위기가 찾아온다. 이를 막을 수 있는 건 오직 존재 자체가 기밀인 '에단 헌트'와...",
-      category: "기술"
-    },
-    sports: {
-      title: "월드컵 예선, 한국 축구의 새로운 도전",
-      description: "한국 축구 대표팀이 월드컵 예선을 앞두고 새로운 도전을 시작합니다. 손흥민 주장을 중심으로 한 새로운 세대의 선수들이 모여 더 강력한 팀워크를 보여줄 것으로 기대됩니다...",
-      category: "스포츠"
-    },
-    economy: {
-      title: "글로벌 경제 위기, 한국 경제의 새로운 도약",
-      description: "세계 경제의 불확실성이 커지는 가운데, 한국 경제는 새로운 도약을 준비하고 있습니다. 반도체 산업을 중심으로 한 첨단 기술 산업의 성장과 함께, 지속 가능한 경제 성장 모델을 찾아가는 과정에서...",
-      category: "경제"
-    }
-  };
+  const pathname = usePathname();
 
   useEffect(() => {
     const loadNews = async () => {
@@ -37,7 +17,7 @@ export default function Home() {
       setLoading(true);
       try {
         console.log('Calling fetchNaverNews...');
-        const newsData = await fetchNaverNews(currentCategory);
+        const newsData = await fetchNaverNews('sports');
         console.log('Received news data:', newsData);
         setNews(newsData);
       } catch (error) {
@@ -47,11 +27,7 @@ export default function Home() {
     };
 
     loadNews();
-  }, [currentCategory]);
-
-  const handleCategoryChange = (category: Category) => {
-    setCurrentCategory(category);
-  };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -62,7 +38,7 @@ export default function Home() {
           <div className="w-full h-[600px] relative overflow-hidden">
             {/* 배경 이미지 */}
             <div className="absolute inset-0 bg-[#e3e6f3] flex items-center justify-center overflow-hidden">
-              <div className="text-8xl font-bold text-white opacity-20">{currentCategory === 'IT' ? 'Tech News' : currentCategory === 'sports' ? 'Sports News' : 'Economy News'}</div>
+              <div className="text-8xl font-bold text-white opacity-20">Sports News</div>
               {/* 어두운 그라데이션 오버레이 */}
               <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-80"></div>
             </div>
@@ -70,9 +46,9 @@ export default function Home() {
             {/* 콘텐츠 영역 */}
             <div className="absolute inset-0 flex flex-col justify-center items-center text-center text-white z-10">
               <div className="container mx-auto px-4">
-                <h1 className="text-5xl font-bold mb-6">{categoryBanners[currentCategory].title}</h1>
+                <h1 className="text-5xl font-bold mb-6">월드컵 예선, 한국 축구의 새로운 도전</h1>
                 <p className="text-xl max-w-4xl mx-auto mb-8 leading-relaxed">
-                  {categoryBanners[currentCategory].description}
+                  한국 축구 대표팀이 월드컵 예선을 앞두고 새로운 도전을 시작합니다. 손흥민 주장을 중심으로 한 새로운 세대의 선수들이 모여 더 강력한 팀워크를 보여줄 것으로 기대됩니다...
                 </p>
                 <div className="flex justify-center gap-4">
                   <button className="px-8 py-3 bg-[#e53e3e] text-white font-medium rounded-md hover:bg-[#c53030] transition">
@@ -82,7 +58,7 @@ export default function Home() {
                     공유하기
                   </button>
                 </div>
-                <div className="mt-6 text-gray-300">{categoryBanners[currentCategory].category} · 2시간 전 · 조회수 1k</div>
+                <div className="mt-6 text-gray-300">스포츠 · 2시간 전 · 조회수 1k</div>
               </div>
             </div>
           </div>
@@ -122,24 +98,24 @@ export default function Home() {
         {/* 카테고리 네비게이션 */}
         <div className="mb-6 border-b border-gray-200 pb-2">
           <div className="flex space-x-6 text-sm font-medium">
-            <button 
-              onClick={() => handleCategoryChange('IT')}
-              className={`px-3 py-2 ${currentCategory === 'IT' ? 'text-[#5a3ec8]' : 'text-gray-800 hover:text-[#5a3ec8]'}`}
+            <Link 
+              href="/" 
+              className="px-3 py-2 text-gray-800 hover:text-[#5a3ec8]"
             >
               IT
-            </button>
-            <button 
-              onClick={() => handleCategoryChange('sports')}
-              className={`px-3 py-2 ${currentCategory === 'sports' ? 'text-[#5a3ec8]' : 'text-gray-800 hover:text-[#5a3ec8]'}`}
+            </Link>
+            <Link 
+              href="/sports" 
+              className="px-3 py-2 text-[#5a3ec8]"
             >
               스포츠
-            </button>
-            <button 
-              onClick={() => handleCategoryChange('economy')}
-              className={`px-3 py-2 ${currentCategory === 'economy' ? 'text-[#5a3ec8]' : 'text-gray-800 hover:text-[#5a3ec8]'}`}
+            </Link>
+            <Link 
+              href="/economy" 
+              className="px-3 py-2 text-gray-800 hover:text-[#5a3ec8]"
             >
               경제
-            </button>
+            </Link>
           </div>
         </div>
 
