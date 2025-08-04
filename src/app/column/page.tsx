@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Sidebar from "@/components/Sidebar";
+import Sidebar from '@/components/Sidebar';
 import CommentModal from "@/components/CommentModal";
+import ColumnWriteModal from "./ColumnWriteModal";
+import { getToken } from '@/utils/token';
 
 interface Column {
   id: number;
@@ -36,12 +38,19 @@ export default function Column() {
   // 전체 칼럼 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const totalPages = Math.ceil(mockColumns.length / itemsPerPage);
 
   // 더보기 상태 관리
   const [expandedColumns, setExpandedColumns] = useState<number[]>([]);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  // 글쓰기 모달 상태
+  const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
+  const [columns, setColumns] = useState(mockColumns);
+  
+  // columns 상태가 선언된 후에 totalPages 계산
+  const totalPages = Math.ceil(columns.length / itemsPerPage);
 
   const toggleExpand = (columnId: number) => {
     setExpandedColumns(prev => 
@@ -63,14 +72,14 @@ export default function Column() {
   const getVisibleTopColumns = () => {
     const startIndex = currentSliderPage * sliderItemsPerPage;
     const endIndex = startIndex + sliderItemsPerPage;
-    return mockColumns.slice(0, 10).slice(startIndex, endIndex);
+    return columns.slice(0, 10).slice(startIndex, endIndex);
   };
 
   // 전체 칼럼 페이지네이션 함수
   const getVisibleColumns = () => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return mockColumns.slice(startIndex, endIndex);
+    return columns.slice(startIndex, endIndex);
   };
 
   const handlePageChange = (page: number) => {
@@ -82,15 +91,24 @@ export default function Column() {
     setIsCommentModalOpen(true);
   };
 
+  const handleAddColumn = (newColumn: Column) => {
+    setColumns(prev => [newColumn, ...prev]);
+  };
+
   // 클라이언트 사이드에서만 실행되도록 useEffect 사용
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
+    // 컴포넌트 마운트 시 토큰을 확인하여 로그인 상태 설정
+    const token = getToken();
+    setIsLoggedIn(!!token);
   }, []);
 
   if (!mounted) {
     return null; // 서버 사이드 렌더링 시에는 아무것도 렌더링하지 않음
   }
+
+  const selectedColumn = mockColumns.find(c => c.id === selectedColumnId);
 
   return (
     <div className="min-h-screen pt-4 bg-gray-50">
@@ -161,7 +179,17 @@ export default function Column() {
 
             {/* 전체 칼럼 목록 */}
             <div className="mt-8">
-              <h2 className="text-2xl font-bold mb-6">전체 칼럼</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold">전체 칼럼</h2>
+                {isLoggedIn && (
+                  <button 
+                    onClick={() => setIsWriteModalOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                  >
+                    글쓰기
+                  </button>
+                )}
+              </div>
               <div className="space-y-8">
                 {getVisibleColumns().map((column) => (
                   <div key={column.id} className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -312,117 +340,40 @@ export default function Column() {
                 </div>
               </div>
             </div>
+
+            {/* 글쓰기 모달 */}
+            {isWriteModalOpen && (
+              <ColumnWriteModal
+                onClose={() => setIsWriteModalOpen(false)}
+                onSubmit={handleAddColumn}
+              />
+            )}
+
+            {/* 댓글 모달 */}
+            {isCommentModalOpen && selectedColumnId && (
+              <CommentModal
+                isOpen={isCommentModalOpen}
+                onClose={() => {
+                  setIsCommentModalOpen(false);
+                  setSelectedColumnId(null);
+                }}
+                columnInfo={selectedColumn ? {
+                  title: selectedColumn.title,
+                  author: selectedColumn.author,
+                  date: selectedColumn.date,
+                  content: selectedColumn.content,
+                  likes: selectedColumn.likes,
+                  commentsCount: selectedColumn.comments,
+                } : undefined}
+                comments={[]}
+              />
+            )}
           </div>
 
           {/* Sidebar */}
-          <div className="w-80 shrink-0">
-            <div className="sticky top-4">
-              {/* 인기뉴스 섹션 */}
-              <div className="bg-white rounded shadow mb-6 border border-gray-100">
-                <div className="border-b border-gray-200 px-4 py-3">
-                  <h3 className="text-lg font-bold text-[#e53e3e]">인기뉴스</h3>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  <div className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <div className="text-lg font-bold text-gray-400 mt-1">1</div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">손흥민 헤트트릭 폭발... 토트넘 6연승</h4>
-                        <p className="text-xs text-gray-500 mt-1">조회수 12,345 · 14시간 전</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <div className="text-lg font-bold text-gray-400 mt-1">2</div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">원/달러 환율, 1개월 만에 최저치</h4>
-                        <p className="text-xs text-gray-500 mt-1">조회수 8,721 · 24시간 전</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <div className="text-lg font-bold text-gray-400 mt-1">3</div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">코스피, 외국인 매수세에 상승 마감</h4>
-                        <p className="text-xs text-gray-500 mt-1">조회수 7,890 · 3시간 전</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <div className="text-lg font-bold text-gray-400 mt-1">4</div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">류현진, 두 번째 재계약..."1년 더"</h4>
-                        <p className="text-xs text-gray-500 mt-1">조회수 6,543 · 4시간 전</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <div className="text-lg font-bold text-gray-400 mt-1">5</div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">한화하락</h4>
-                        <p className="text-xs text-gray-500 mt-1">조회수 5,432 · 5시간 전</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 실시간 검색어 */}
-              <div className="bg-white rounded shadow border border-gray-100">
-                <div className="border-b border-gray-200 px-4 py-3">
-                  <h3 className="text-lg font-bold text-[#e53e3e]">실시간 검색어</h3>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  <div className="px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-[#e53e3e]">1</span>
-                      <span className="text-gray-900">손흥민</span>
-                    </div>
-                    <span className="text-xs bg-red-900 text-red-300 px-1 rounded">NEW</span>
-                  </div>
-                  <div className="px-4 py-3 flex items-center">
-                    <span className="text-lg font-bold text-[#e53e3e] mr-3">2</span>
-                    <span className="text-gray-900">환율하락</span>
-                  </div>
-                  <div className="px-4 py-3 flex items-center">
-                    <span className="text-lg font-bold text-[#e53e3e] mr-3">3</span>
-                    <span className="text-gray-900">코스피 상승</span>
-                  </div>
-                  <div className="px-4 py-3 flex items-center">
-                    <span className="text-lg font-bold text-[#e53e3e] mr-3">4</span>
-                    <span className="text-gray-900">수출 실적</span>
-                  </div>
-                  <div className="px-4 py-3 flex items-center">
-                    <span className="text-lg font-bold text-[#e53e3e] mr-3">5</span>
-                    <span className="text-gray-900">류현진</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <Sidebar />
         </div>
       </div>
-
-      {/* 댓글 모달 추가 */}
-      {selectedColumnId && (
-        <CommentModal
-          isOpen={isCommentModalOpen}
-          onClose={() => setIsCommentModalOpen(false)}
-          columnId={selectedColumnId}
-          columnTitle={mockColumns.find(col => col.id === selectedColumnId)?.title || ''}
-          columnContent={mockColumns.find(col => col.id === selectedColumnId)?.content || ''}
-          columnAuthor={mockColumns.find(col => col.id === selectedColumnId)?.author || ''}
-          columnDate={mockColumns.find(col => col.id === selectedColumnId)?.date || ''}
-        />
-      )}
     </div>
   );
 } 

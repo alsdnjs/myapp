@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { handleNaverLogin, handleKakaoLogin, handleGoogleLogin } from '@/utils/auth';
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -14,6 +15,11 @@ const SignupModal: React.FC<SignupModalProps> = ({ isOpen, onClose, onSwitchToLo
   const handleLoginClick = () => {
     onClose(); // Close signup modal
     onSwitchToLogin(); // Open login modal
+  };
+
+  const handleNaverSignup = () => {
+    console.log('Naver signup button clicked');
+    handleNaverLogin();
   };
 
   return (
@@ -34,22 +40,28 @@ const SignupModal: React.FC<SignupModalProps> = ({ isOpen, onClose, onSwitchToLo
         <div className="space-y-8">
           <button
             type="button"
+            onClick={() => {
+              console.log('Button clicked directly');
+              handleNaverSignup();
+            }}
             className="w-full bg-[#03C75A] text-white py-5 rounded-lg hover:bg-[#02b351] transition-colors flex items-center justify-center text-xl"
           >
             <span className="mr-4 text-2xl">N</span>
             네이버 회원가입
           </button>
-
+          
           <button
             type="button"
+            onClick={handleKakaoLogin}
             className="w-full bg-[#FEE500] text-[#000000] py-5 rounded-lg hover:bg-[#F4DC00] transition-colors flex items-center justify-center text-xl"
           >
             <span className="mr-4 text-2xl">K</span>
             카카오 회원가입
           </button>
-
+          
           <button
             type="button"
+            onClick={handleGoogleLogin}
             className="w-full bg-white border border-gray-300 text-gray-700 py-5 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center text-xl"
           >
             <span className="mr-4 text-2xl font-bold bg-gradient-to-r from-[#EA4335] via-[#34A853] via-[#4285F4] via-[#34A853] to-[#FBBC05] bg-clip-text text-transparent">G</span>
