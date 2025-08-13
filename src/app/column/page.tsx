@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import CommentModal from "@/components/CommentModal";
+import ColumnDetailModal from "./ColumnDetailModal";
 import ColumnWriteModal from "./ColumnWriteModal";
 import { getToken } from '@/utils/token';
+import ColumnEditModal, { ColumnEditData } from './ColumnEditModal';
 
 interface Column {
   id: number;
@@ -15,6 +17,7 @@ interface Column {
   comments: number;
   likes: number;
   content: string;
+  userId?: number | null;
 }
 
 // Mock data for columns with fixed values
@@ -33,7 +36,6 @@ export default function Column() {
   // 인기 칼럼 슬라이더 상태
   const [currentSliderPage, setCurrentSliderPage] = useState(0);
   const sliderItemsPerPage = 3;
-  const totalSliderPages = Math.ceil(10 / sliderItemsPerPage); // 상위 10개 칼럼
 
   // 전체 칼럼 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1);
@@ -43,7 +45,11 @@ export default function Column() {
   const [expandedColumns, setExpandedColumns] = useState<number[]>([]);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<ColumnEditData | null>(null);
   
   // 글쓰기 모달 상태
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
@@ -51,6 +57,19 @@ export default function Column() {
   
   // columns 상태가 선언된 후에 totalPages 계산
   const totalPages = Math.ceil(columns.length / itemsPerPage);
+
+  // 서버 아이템을 화면 모델로 변환
+  const mapServerItemToColumn = (item: any): Column => ({
+    id: item.board_id || item.id,
+    title: item.board_content?.substring(0, 50) + '...' || item.title || '제목 없음',
+    author: item.username || item.author || '작성자',
+    date: item.uploaded_at || item.date || '2024.03.21',
+    views: item.view || item.views || item.view_count || 0,
+    comments: item.comment_count || item.comments || 0,
+    likes: item.like_count || item.likes || 0,
+    content: item.board_content || item.content || '내용 없음',
+    userId: item.user_id || item.userId || item.userid || null,
+  });
 
   const toggleExpand = (columnId: number) => {
     setExpandedColumns(prev => 
@@ -60,19 +79,91 @@ export default function Column() {
     );
   };
 
+  // 외부 클릭 시 액션 메뉴 닫기 (메뉴/버튼 내부 클릭은 유지)
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (openActionMenuId == null) return;
+      const root = document.querySelector(`[data-action-root="${openActionMenuId}"]`) as HTMLElement | null;
+      if (root && e.target instanceof Node && root.contains(e.target)) return;
+      setOpenActionMenuId(null);
+    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenActionMenuId(null); };
+    document.addEventListener('click', handleDocumentClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('click', handleDocumentClick);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [openActionMenuId]);
+
+  const toggleActionMenu = (e: React.MouseEvent, columnId: number) => {
+    e.stopPropagation();
+    setOpenActionMenuId(prev => (prev === columnId ? null : columnId));
+  };
+
+  const handleEditColumn = (e: React.MouseEvent, column: Column) => {
+    e.stopPropagation();
+    setOpenActionMenuId(null);
+    setEditTarget({ id: column.id, title: column.title, content: column.content });
+  };
+
+  const handleDeleteColumn = async (e: React.MouseEvent, columnId: number) => {
+    e.stopPropagation();
+    setOpenActionMenuId(null);
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const resp = await fetch(`${baseUrl}/api/board/board/delete/${columnId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (resp.status === 204 || resp.status === 200) {
+        setColumns(prev => prev.filter(c => c.id !== columnId));
+      } else if (resp.status === 403) {
+        alert('작성자만 삭제할 수 있습니다.');
+      } else if (resp.status === 401) {
+        alert('로그인이 필요합니다. 다시 로그인해주세요.');
+      } else if (resp.status === 404) {
+        alert('게시글을 찾을 수 없습니다.');
+      } else {
+        const text = await resp.text().catch(() => '');
+        console.error('삭제 실패:', resp.status, text);
+        alert('삭제에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('삭제 오류:', err);
+      alert('삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   // 인기 칼럼 슬라이더 함수
+  const getTotalSliderPages = () => {
+    const sortedByViewsDesc = [...columns].sort((a, b) => (b.views || 0) - (a.views || 0));
+    const topTen = sortedByViewsDesc.slice(0, 10);
+    return Math.ceil(topTen.length / sliderItemsPerPage) || 1;
+  };
+
   const nextSliderPage = () => {
-    setCurrentSliderPage((prev) => (prev + 1) % totalSliderPages);
+    const pages = getTotalSliderPages();
+    setCurrentSliderPage((prev) => (prev + 1) % pages);
   };
 
   const prevSliderPage = () => {
-    setCurrentSliderPage((prev) => (prev - 1 + totalSliderPages) % totalSliderPages);
+    const pages = getTotalSliderPages();
+    setCurrentSliderPage((prev) => (prev - 1 + pages) % pages);
   };
 
   const getVisibleTopColumns = () => {
+    const sortedByViewsDesc = [...columns].sort((a, b) => (b.views || 0) - (a.views || 0));
+    const topTen = sortedByViewsDesc.slice(0, 10);
     const startIndex = currentSliderPage * sliderItemsPerPage;
     const endIndex = startIndex + sliderItemsPerPage;
-    return columns.slice(0, 10).slice(startIndex, endIndex);
+    return topTen.slice(startIndex, endIndex);
   };
 
   // 전체 칼럼 페이지네이션 함수
@@ -91,24 +182,123 @@ export default function Column() {
     setIsCommentModalOpen(true);
   };
 
-  const handleAddColumn = (newColumn: Column) => {
-    setColumns(prev => [newColumn, ...prev]);
+  const handleColumnClick = (columnId: number) => {
+    console.log('글 클릭됨 - columnId:', columnId);
+    setSelectedColumnId(columnId);
+    setIsDetailModalOpen(true);
+    // 상세에서 조회수가 증가하므로 UX를 위해 낙관적 증가
+    setColumns(prev => prev.map(c => c.id === columnId ? { ...c, views: (c.views || 0) + 1 } : c));
+  };
+
+  const handleAddColumn = async (newColumn: Column) => {
+    // 글 작성 후 서버에서 최신 목록을 다시 가져오기
+    try {
+      const token = getToken();
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(`${baseUrl}/api/board/board`, {
+        method: 'GET',
+        headers
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('글 작성 후 최신 목록:', data);
+        const serverColumns: Column[] = data.map(mapServerItemToColumn);
+        setColumns(serverColumns);
+      } else {
+        console.error('글 작성 후 목록 새로고침 실패:', response.status);
+        // 실패 시 기존 방식으로 추가
+        setColumns(prev => [newColumn, ...prev]);
+      }
+    } catch (error) {
+      console.error('글 작성 후 목록 새로고침 오류:', error);
+      // 오류 시 기존 방식으로 추가
+      setColumns(prev => [newColumn, ...prev]);
+    }
   };
 
   // 클라이언트 사이드에서만 실행되도록 useEffect 사용
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
-    // 컴포넌트 마운트 시 토큰을 확인하여 로그인 상태 설정
+    
+    // 로그인 상태 확인
     const token = getToken();
     setIsLoggedIn(!!token);
+    // 현재 사용자 정보 로드 (user_id 확인)
+    const loadMe = async () => {
+      if (!token) return;
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+        const response = await fetch(`${apiUrl}/api/user`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user_id) setCurrentUserId(data.user_id);
+          else if (data.id) setCurrentUserId(data.id);
+        }
+      } catch (e) {
+        console.error('내 정보 로드 실패', e);
+      }
+    };
+    loadMe();
+    
+    // 백엔드에서 글 목록 가져오기
+    const fetchColumns = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(`${baseUrl}/api/board/board`, {
+          method: 'GET',
+          headers
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('서버에서 받은 글 목록:', data);
+          const serverColumns: Column[] = data.map(mapServerItemToColumn);
+          setColumns(serverColumns);
+        } else {
+          console.error('글 목록 가져오기 실패:', response.status);
+          // 실패 시 기존 mock 데이터 사용
+          setColumns(mockColumns);
+        }
+      } catch (error) {
+        console.error('글 목록 가져오기 오류:', error);
+        // 오류 시 기존 mock 데이터 사용
+        setColumns(mockColumns);
+      }
+    };
+    
+    fetchColumns();
   }, []);
 
   if (!mounted) {
     return null; // 서버 사이드 렌더링 시에는 아무것도 렌더링하지 않음
   }
 
-  const selectedColumn = mockColumns.find(c => c.id === selectedColumnId);
+  const selectedColumn = columns.find(c => c.id === selectedColumnId);
 
   return (
     <div className="min-h-screen pt-4 bg-gray-50">
@@ -119,7 +309,7 @@ export default function Column() {
             {/* 인기 칼럼 슬라이더 */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">많이 본 칼럼</h2>
+                <h2 className="text-2xl font-bold">인기 칼럼</h2>
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={prevSliderPage}
@@ -141,11 +331,15 @@ export default function Column() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {getVisibleTopColumns().map((column) => (
-                  <div key={column.id} className="bg-gray-50 rounded-lg p-4 hover:shadow-md transition-shadow">
+                {getVisibleTopColumns().map((column, index) => (
+                  <div 
+                    key={column.id} 
+                    className="bg-gray-50 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => handleColumnClick(column.id)}
+                  >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-2">
-                        <span className="text-blue-600 font-bold">#{column.id}</span>
+                        <span className="text-blue-600 font-bold">#{currentSliderPage * sliderItemsPerPage + index + 1}</span>
                         <span className="text-sm text-gray-500">{column.views.toLocaleString()} views</span>
                       </div>
                     </div>
@@ -164,7 +358,7 @@ export default function Column() {
 
               <div className="flex justify-center mt-6">
                 <div className="flex space-x-2">
-                  {Array.from({ length: totalSliderPages }, (_, i) => (
+                  {Array.from({ length: getTotalSliderPages() }, (_, i) => (
                     <button
                       key={i}
                       onClick={() => setCurrentSliderPage(i)}
@@ -192,9 +386,13 @@ export default function Column() {
               </div>
               <div className="space-y-8">
                 {getVisibleColumns().map((column) => (
-                  <div key={column.id} className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div 
+                    key={column.id} 
+                    className="bg-white rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => handleColumnClick(column.id)}
+                  >
                     {/* 헤더 */}
-                    <div className="p-4 flex items-center justify-between">
+                    <div className="p-4 flex items-center justify-between relative" data-action-root={column.id}>
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-gray-200 rounded-full overflow-hidden">
                           <img 
@@ -208,11 +406,41 @@ export default function Column() {
                           <p className="text-sm text-gray-500">{column.date}</p>
                         </div>
                       </div>
-                      <button className="text-gray-400 hover:text-gray-600">
+                      <button
+                        onClick={(e) => toggleActionMenu(e, column.id)}
+                        className="text-gray-400 hover:text-gray-600"
+                        aria-haspopup="menu"
+                        aria-expanded={openActionMenuId === column.id}
+                      >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                         </svg>
                       </button>
+
+                      {openActionMenuId === column.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          role="menu"
+                          className="absolute right-4 top-12 z-20 w-32 bg-white border border-gray-200 rounded-md shadow-lg py-1"
+                        >
+                          <button
+                            role="menuitem"
+                            onClick={(e) => handleEditColumn(e, column)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                          >
+                            수정
+                          </button>
+                          {currentUserId && column.userId === currentUserId && (
+                            <button
+                              role="menuitem"
+                              onClick={(e) => handleDeleteColumn(e, column.id)}
+                              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 내용 */}
@@ -224,7 +452,10 @@ export default function Column() {
                         </p>
                         {column.content.length > 100 && (
                           <button
-                            onClick={() => toggleExpand(column.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpand(column.id);
+                            }}
                             className="text-blue-500 hover:text-blue-600 font-medium text-sm flex items-center"
                           >
                             {expandedColumns.includes(column.id) ? (
@@ -251,13 +482,19 @@ export default function Column() {
                     <div className="px-4 pb-4">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-4">
-                          <button className="text-gray-600 hover:text-red-500 transition-colors">
+                          <button 
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-gray-600 hover:text-red-500 transition-colors"
+                          >
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
                           </button>
                           <button 
-                            onClick={() => handleCommentClick(column.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCommentClick(column.id);
+                            }}
                             className="text-gray-600 hover:text-blue-500 transition-colors"
                           >
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -265,7 +502,10 @@ export default function Column() {
                             </svg>
                           </button>
                         </div>
-                        <button className="text-gray-600 hover:text-blue-500 transition-colors">
+                        <button 
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-gray-600 hover:text-blue-500 transition-colors"
+                        >
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                           </svg>
@@ -349,6 +589,18 @@ export default function Column() {
               />
             )}
 
+            {/* 수정 모달 */}
+            {editTarget && (
+              <ColumnEditModal
+                isOpen={!!editTarget}
+                onClose={() => setEditTarget(null)}
+                column={editTarget}
+                onUpdated={(updated) => {
+                  setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, title: updated.title ?? c.title, content: updated.content } : c));
+                }}
+              />
+            )}
+
             {/* 댓글 모달 */}
             {isCommentModalOpen && selectedColumnId && (
               <CommentModal
@@ -368,6 +620,17 @@ export default function Column() {
                 comments={[]}
               />
             )}
+
+            {/* 상세 페이지 모달 */}
+            <ColumnDetailModal
+              isOpen={isDetailModalOpen}
+              onClose={() => {
+                setIsDetailModalOpen(false);
+                setSelectedColumnId(null);
+              }}
+              columnId={selectedColumnId}
+            />
+
           </div>
 
           {/* Sidebar */}

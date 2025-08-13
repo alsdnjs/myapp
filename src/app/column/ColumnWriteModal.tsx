@@ -22,6 +22,7 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [userId, setUserId] = useState<number | null>(null); // 사용자 ID 추가
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 컴포넌트 마운트 시 사용자 정보 가져오기
@@ -37,7 +38,6 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
         const apiUrl = process.env.NEXT_PUBLIC_BASE_URL;
         const response = await fetch(`${apiUrl}/api/user`, {
           method: 'POST',
-          credentials: 'include',
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
@@ -46,10 +46,20 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
         });
 
         if (response.ok) {
-          const userData = await response.json();
-          if (userData.isAuthenticated && userData.username) {
-            setAuthor(userData.username);
+          const data = await response.json();
+          if (data.isAuthenticated && data.username) {
+            setAuthor(data.username);
+            // user_id 또는 id 필드 확인
+            if (data.user_id) {
+              setUserId(data.user_id);
+            } else if (data.id) {
+              setUserId(data.id);
+            } else {
+              console.error('사용자 ID를 찾을 수 없습니다:', data);
+            }
           }
+        } else {
+          console.error('사용자 정보 가져오기 실패:', response.status);
         }
       } catch (error) {
         console.error('사용자 정보 가져오기 실패:', error);
@@ -72,20 +82,126 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      id: Date.now(),
-      title,
-      author,
-      date: new Date().toISOString().slice(0, 10),
-      views: 0,
-      comments: 0,
-      likes: 0,
-      content,
-      imageUrl: selectedImage || undefined,
-    });
-    onClose();
+    
+    // 토큰 확인
+    const token = getToken();
+    if (!token) {
+      alert('로그인이 필요합니다. 다시 로그인해주세요.');
+      return;
+    }
+    
+    console.log('토큰 확인됨:', token.substring(0, 20) + '...');
+    
+    // 임시로 사용자 ID 설정 (실제로는 백엔드에서 가져와야 함)
+    const currentUserId = userId || 1; // 임시로 1로 설정
+    
+    if (!currentUserId) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
+    try {
+      let imageId = undefined; // null 대신 undefined 사용
+      
+      // 이미지가 있으면 먼저 이미지 저장
+      if (selectedImage) {
+        console.log('이미지 업로드 시작...');
+        const imageResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({
+            image_url: selectedImage
+          })
+        });
+        
+        if (imageResponse.ok) {
+          const data = await imageResponse.json();
+          if (data.image_id) {
+            imageId = data.image_id;
+            console.log('이미지 업로드 성공, image_id:', imageId);
+          } else {
+            console.error('이미지 저장 실패 - image_id 없음');
+          }
+        } else {
+          console.error('이미지 저장 실패:', imageResponse.status);
+        }
+      } else {
+        console.log('이미지 없음, 글작성만 진행');
+      }
+      
+      // 글작성 API 호출
+      console.log('글작성 API 호출 시작...');
+      const requestBody: {
+        board_content: string;
+        user_id: number;
+        image_id?: number;
+      } = {
+        board_content: content,
+        user_id: currentUserId
+      };
+      
+      // imageId가 있을 때만 추가 (undefined나 null이 아닐 때만)
+      if (imageId !== undefined && imageId !== null) {
+        requestBody.image_id = imageId;
+        console.log('이미지 ID 포함:', imageId);
+      } else {
+        console.log('이미지 ID 없음');
+      }
+      
+      console.log('요청 데이터:', requestBody);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/board/board/insert`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        credentials: 'include', // CORS를 위한 설정 추가
+        body: JSON.stringify(requestBody)
+      });
+      
+      console.log('응답 상태:', response.status);
+      console.log('응답 헤더:', response.headers);
+      
+      if (response.ok) {
+        console.log('글작성 성공!');
+        // 부모 목록 즉시 갱신 트리거
+        onSubmit({
+          id: Date.now(),
+          title: title || content.substring(0, 50) + '...',
+          author: author || '작성자',
+          date: new Date().toISOString().slice(0, 10),
+          views: 0,
+          comments: 0,
+          likes: 0,
+          content,
+        });
+        onClose();
+        alert('글이 성공적으로 작성되었습니다!');
+      } else {
+        const errorData = await response.text();
+        console.error('글작성 실패:', response.status, errorData);
+        
+        if (response.status === 401) {
+          alert('로그인이 필요합니다. 다시 로그인해주세요.');
+        } else if (response.status === 403) {
+          alert('접근 권한이 없습니다.');
+        } else if (response.status === 500) {
+          console.error('서버 내부 오류:', errorData);
+          alert('서버 오류가 발생했습니다. 백엔드 개발자에게 문의해주세요.');
+        } else {
+          alert('글작성에 실패했습니다. 다시 시도해주세요.');
+        }
+      }
+    } catch (error) {
+      console.error('글작성 오류:', error);
+      alert('글작성 중 오류가 발생했습니다.');
+    }
   };
 
   if (isLoading) {

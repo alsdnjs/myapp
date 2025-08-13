@@ -101,7 +101,7 @@ export default function Home() {
       pages.push(i);
     }
 
-    return (
+  return (
       <div className="flex justify-center items-center space-x-2 mt-8">
         {/* 이전 페이지 */}
         <button
@@ -768,4 +768,4 @@ export default function Home() {
       </div>
     </div>
   );
-} 
+}
