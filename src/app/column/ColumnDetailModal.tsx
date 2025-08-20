@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { getToken } from '@/utils/token';
+import { parseTitleAndContent } from '@/utils/articleStorage';
 
 interface ColumnDetail {
   id: number;
@@ -12,6 +13,7 @@ interface ColumnDetail {
   comments: number;
   likes: number;
   content: string;
+  image_url?: string;
 }
 
 interface ColumnDetailModalProps {
@@ -23,6 +25,21 @@ interface ColumnDetailModalProps {
 export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnDetailModalProps) {
   const [column, setColumn] = useState<ColumnDetail | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 이미지 URL 변환 함수
+  const transformImageUrl = (imageUrl: string): string => {
+    if (imageUrl.startsWith('/upload/')) {
+      // /upload/파일명.png → /api/board/image/파일명.png
+      const filename = imageUrl.replace('/upload/', '');
+      return `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}/api/board/image/${filename}`;
+    } else if (!imageUrl.startsWith('http')) {
+      // 상대 경로인 경우
+      return `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}${imageUrl}`;
+    } else {
+      // 이미 전체 URL인 경우
+      return imageUrl;
+    }
+  };
 
   useEffect(() => {
     if (isOpen && columnId) {
@@ -39,6 +56,8 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
       const baseUrl = 'http://localhost:8080';
       
       console.log('상세 정보 로드 시작 - columnId:', columnId);
+      console.log('토큰 상태:', token ? '있음' : '없음');
+      console.log('토큰 값:', token ? token.substring(0, 20) + '...' : '없음');
       
       // 글 상세 정보 가져오기
       const headers: HeadersInit = {
@@ -47,10 +66,14 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
       
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+        console.log('Authorization 헤더 추가됨');
+      } else {
+        console.log('토큰이 없어서 Authorization 헤더를 추가하지 않음');
       }
 
       // 실제 백엔드 API 호출
       console.log('백엔드 API 호출 시도 - columnId:', columnId);
+      console.log('요청 헤더:', headers);
       
       // 다른 가능한 경로들을 시도
       const detailResponse = await fetch(`${baseUrl}/api/board/board/detail/${columnId}`, {
@@ -64,15 +87,19 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
         const data = await detailResponse.json();
         console.log('글 상세 정보:', data);
         
+        // 제목과 내용을 파싱
+        const { title, content } = parseTitleAndContent(data.board_content || data.content || '');
+        
         const columnDetail: ColumnDetail = {
           id: data.board_id || data.id,
-          title: data.board_content?.substring(0, 100) + '...' || '제목 없음',
+          title: title || '제목 없음',
           author: data.username || data.author || '작성자',
           date: data.uploaded_at || data.date || '2024.03.21',
           views: data.view || data.views || 0,
           comments: data.comment_count || data.comments || 0,
           likes: data.like_count || data.likes || 0,
-          content: data.board_content || data.content || '내용 없음'
+          content: content || '내용 없음',
+          image_url: data.image_url ? transformImageUrl(data.image_url) : undefined
         };
         
         setColumn(columnDetail);
@@ -115,8 +142,25 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
       <div className={`bg-white/95 rounded-lg w-full max-w-7xl h-[90vh] flex overflow-hidden transform transition-all duration-500 ease-in-out ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
-        {/* 왼쪽: 검정 배경 (댓글 모달과 동일 구조) */}
-        <div className="w-1/2 bg-black" />
+        {/* 왼쪽: 이미지 또는 검정 배경 */}
+        <div className="w-1/2 bg-black relative">
+          {column?.image_url ? (
+            <img 
+              src={column.image_url} 
+              alt="칼럼 이미지"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-black flex items-center justify-center">
+              <div className="text-white text-center">
+                <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <p className="text-lg">이미지 없음</p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* 오른쪽: 상세 섹션 */}
         <div className="w-1/2 flex flex-col">

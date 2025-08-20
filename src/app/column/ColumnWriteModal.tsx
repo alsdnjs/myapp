@@ -21,7 +21,9 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
   const [author, setAuthor] = useState("");
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [userId, setUserId] = useState<number | null>(null); // 사용자 ID 추가
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,17 +71,59 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
     };
 
     fetchUserInfo();
+    
+    // 컴포넌트 마운트 시 상태 초기화
+    setSelectedImages([]);
+    setSelectedFiles([]);
+    setCurrentImageIndex(0);
   }, [onClose]);
 
+  // 키보드 이벤트 처리
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (selectedImages.length <= 1) return;
+      
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setCurrentImageIndex(prev => prev > 0 ? prev - 1 : selectedImages.length - 1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setCurrentImageIndex(prev => prev < selectedImages.length - 1 ? prev + 1 : 0);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedImages.length]);
+
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (files.length === 0) return;
+    
+    const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setSelectedImage(e.target?.result as string);
-      };
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
       reader.readAsDataURL(file);
-    }
+    });
+    
+    (async () => {
+      try {
+        const dataUrls = await Promise.all(files.map(readAsDataUrl));
+        // 기존 이미지에 새로운 이미지 추가
+        setSelectedImages(prev => [...prev, ...dataUrls]);
+        setSelectedFiles(prev => [...prev, ...files]);
+        console.log(`${files.length}개의 이미지 파일 추가됨. 총 ${selectedImages.length + files.length}장`);
+        
+        // 파일 input 초기화 (같은 파일을 다시 선택할 수 있도록)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } catch (err) {
+        console.error('이미지 미리보기 생성 오류:', err);
+        alert('이미지 미리보기 생성 중 오류가 발생했습니다.');
+      }
+    })();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,73 +147,43 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
     }
 
     try {
-      let imageId = undefined; // null 대신 undefined 사용
+      // FormData 생성
+      const formData = new FormData();
       
-      // 이미지가 있으면 먼저 이미지 저장
-      if (selectedImage) {
-        console.log('이미지 업로드 시작...');
-        const imageResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getToken()}`
-          },
-          body: JSON.stringify({
-            image_url: selectedImage
-          })
+      // 제목과 내용을 [제목] 내용 형식으로 합쳐서 전송
+      const combinedContent = title ? `[${title}] ${content}` : content;
+      formData.append('content', combinedContent);
+      
+      // 이미지 파일들을 FormData에 추가
+      if (selectedFiles.length > 0) {
+        selectedFiles.forEach((file, index) => {
+          formData.append('images', file);
         });
-        
-        if (imageResponse.ok) {
-          const data = await imageResponse.json();
-          if (data.image_id) {
-            imageId = data.image_id;
-            console.log('이미지 업로드 성공, image_id:', imageId);
-          } else {
-            console.error('이미지 저장 실패 - image_id 없음');
-          }
-        } else {
-          console.error('이미지 저장 실패:', imageResponse.status);
-        }
-      } else {
-        console.log('이미지 없음, 글작성만 진행');
+        console.log(`${selectedFiles.length}개의 이미지 파일 추가됨`);
       }
       
-      // 글작성 API 호출
       console.log('글작성 API 호출 시작...');
-      const requestBody: {
-        board_content: string;
-        user_id: number;
-        image_id?: number;
-      } = {
-        board_content: content,
-        user_id: currentUserId
-      };
-      
-      // imageId가 있을 때만 추가 (undefined나 null이 아닐 때만)
-      if (imageId !== undefined && imageId !== null) {
-        requestBody.image_id = imageId;
-        console.log('이미지 ID 포함:', imageId);
-      } else {
-        console.log('이미지 ID 없음');
-      }
-      
-      console.log('요청 데이터:', requestBody);
+      console.log('FormData 내용:', {
+        content: combinedContent,
+        imagesCount: selectedFiles.length || 0
+      });
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/board/board/insert`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
+          'Authorization': `Bearer ${token}`
+          // Content-Type은 FormData를 사용할 때 자동으로 설정되므로 제거
         },
-        credentials: 'include', // CORS를 위한 설정 추가
-        body: JSON.stringify(requestBody)
+        body: formData
       });
       
       console.log('응답 상태:', response.status);
       console.log('응답 헤더:', response.headers);
       
       if (response.ok) {
-        console.log('글작성 성공!');
+        const responseData = await response.text();
+        console.log('글작성 성공!', responseData);
+        
         // 부모 목록 즉시 갱신 트리거
         onSubmit({
           id: Date.now(),
@@ -182,7 +196,7 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
           content,
         });
         onClose();
-        alert('글이 성공적으로 작성되었습니다!');
+        alert(responseData || '글이 성공적으로 작성되었습니다!');
       } else {
         const errorData = await response.text();
         console.error('글작성 실패:', response.status, errorData);
@@ -222,21 +236,79 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
       <div className="bg-white/95 rounded-lg w-full max-w-7xl h-[90vh] flex overflow-hidden transform transition-all duration-500 ease-in-out">
         {/* 왼쪽: 이미지 업로드 영역 */}
         <div className="w-1/2 bg-black relative">
-          {selectedImage ? (
+          {selectedImages.length > 0 ? (
             <div className="w-full h-full relative">
               <img 
-                src={selectedImage} 
-                alt="칼럼 이미지" 
+                src={selectedImages[currentImageIndex]} 
+                alt="칼럼 이미지"
                 className="w-full h-full object-cover"
               />
-              <button
-                onClick={() => setSelectedImage(null)}
-                className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              
+              {/* 이미지 네비게이션 */}
+              {selectedImages.length > 1 && (
+                <>
+                  {/* 이전 버튼 */}
+                  <button
+                    onClick={() => setCurrentImageIndex(prev => prev > 0 ? prev - 1 : selectedImages.length - 1)}
+                    className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                    title="이전 이미지"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  
+                  {/* 다음 버튼 */}
+                  <button
+                    onClick={() => setCurrentImageIndex(prev => prev < selectedImages.length - 1 ? prev + 1 : 0)}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                    title="다음 이미지"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  
+                  {/* 이미지 인디케이터 */}
+                  <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 flex space-x-2">
+                    {selectedImages.map((_, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentImageIndex(index)}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          index === currentImageIndex ? 'bg-white' : 'bg-white/50'
+                        }`}
+                        title={`${index + 1}번째 이미지`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              
+              <div className="absolute bottom-4 left-4 bg-black/60 text-white text-sm px-3 py-1 rounded-full flex items-center space-x-2">
+                <span>{currentImageIndex + 1}/{selectedImages.length}장</span>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-5 h-5 bg-white text-black rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+                  title="이미지 추가"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              </div>
+                  <button
+                    onClick={() => { 
+                      setSelectedImages([]); 
+                      setSelectedFiles([]); 
+                      setCurrentImageIndex(0);
+                    }}
+                    className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
             </div>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-white">
@@ -244,7 +316,7 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               <p className="text-lg mb-4">이미지를 추가해주세요</p>
-              <button
+                <button
                 onClick={() => fileInputRef.current?.click()}
                 className="bg-white text-black px-6 py-3 rounded-lg hover:bg-gray-100 transition-colors"
               >
@@ -256,6 +328,7 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleImageUpload}
             className="hidden"
           />
@@ -326,7 +399,7 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-6 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                 >
                   등록
                 </button>

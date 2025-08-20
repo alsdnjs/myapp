@@ -7,6 +7,8 @@ import ColumnDetailModal from "./ColumnDetailModal";
 import ColumnWriteModal from "./ColumnWriteModal";
 import { getToken } from '@/utils/token';
 import ColumnEditModal, { ColumnEditData } from './ColumnEditModal';
+import { parseTitleAndContent } from '@/utils/articleStorage';
+import ImageGallery from '@/components/ImageGallery'; // 이미지 갤러리 컴포넌트 추가
 
 interface Column {
   id: number;
@@ -17,7 +19,10 @@ interface Column {
   comments: number;
   likes: number;
   content: string;
-  userId?: number | null;
+  image_url?: string;
+  imageUrls?: string; // 여러 이미지를 위한 필드 추가
+  imageIds?: string; // 이미지 ID들을 위한 필드 추가
+  user_id?: number; // 사용자 ID 필드 추가
 }
 
 // Mock data for columns with fixed values
@@ -59,17 +64,71 @@ export default function Column() {
   const totalPages = Math.ceil(columns.length / itemsPerPage);
 
   // 서버 아이템을 화면 모델로 변환
-  const mapServerItemToColumn = (item: any): Column => ({
-    id: item.board_id || item.id,
-    title: item.board_content?.substring(0, 50) + '...' || item.title || '제목 없음',
-    author: item.username || item.author || '작성자',
-    date: item.uploaded_at || item.date || '2024.03.21',
-    views: item.view || item.views || item.view_count || 0,
-    comments: item.comment_count || item.comments || 0,
-    likes: item.like_count || item.likes || 0,
-    content: item.board_content || item.content || '내용 없음',
-    userId: item.user_id || item.userId || item.userid || null,
-  });
+  const mapServerItemToColumn = (item: any): Column => {
+    const { title, content } = parseTitleAndContent(item.board_content || item.content);
+    
+    // 디버깅: 백엔드 응답 구조 확인
+    console.log('백엔드 응답 데이터:', item);
+    console.log('이미지 URL (image_url):', item.image_url);
+    console.log('이미지 URL (imageUrl):', item.imageUrl);
+    console.log('이미지 URL (image_path):', item.image_path);
+    console.log('이미지 URL (attachment_url):', item.attachment_url);
+    
+    // 가능한 모든 이미지 필드명 시도
+    const imageUrl = item.image_url || item.imageUrl || item.image_path || item.attachment_url || item.file_url;
+    
+    // 백엔드 이미지 API 엔드포인트로 URL 변환
+    let fullImageUrl = null;
+    let multipleImageUrls = null;
+    
+    if (imageUrl) {
+      if (imageUrl.startsWith('/upload/')) {
+        // /upload/파일명.png → /api/board/image/파일명.png
+        const filename = imageUrl.replace('/upload/', '');
+        fullImageUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}/api/board/image/${filename}`;
+      } else if (!imageUrl.startsWith('http')) {
+        // 상대 경로인 경우
+        fullImageUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}${imageUrl}`;
+      } else {
+        // 이미 전체 URL인 경우
+        fullImageUrl = imageUrl;
+      }
+    }
+    
+    // imageUrls 필드 처리 (여러 이미지)
+    if (item.imageUrls) {
+      // 쉼표로 구분된 완성된 URL들을 파싱
+      const urls = item.imageUrls.split(',').map((url: string) => url.trim());
+      multipleImageUrls = urls.join(',');
+      console.log('백엔드 imageUrls 필드 발견:', item.imageUrls);
+      console.log('파싱된 URLs:', urls);
+      console.log('최종 multipleImageUrls:', multipleImageUrls);
+    } else {
+      console.log('백엔드에 imageUrls 필드가 없음');
+    }
+    
+    // 디버깅: URL 변환 과정 확인
+    console.log('원본 imageUrl:', imageUrl);
+    console.log('원본 imageUrls:', item.imageUrls);
+    console.log('변환된 fullImageUrl:', fullImageUrl);
+    console.log('변환된 multipleImageUrls:', multipleImageUrls);
+    console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL);
+    
+    return {
+      id: item.board_id || item.id,
+      title: title || '제목 없음',
+      author: item.username || item.author || '작성자',
+      date: item.uploaded_at || item.date || '2024.03.21',
+      views: item.view || item.views || item.view_count || 0,
+      comments: item.comment_count || item.comments || 0,
+      likes: item.like_count || item.likes || 0,
+      content: content || '내용 없음',
+      image_url: fullImageUrl || undefined,
+      imageUrls: multipleImageUrls || undefined, // 여러 이미지를 위한 필드
+      imageIds: item.imageIds || item.image_ids || undefined, // 이미지 ID들을 위한 필드
+      user_id: item.user_id || item.userId // 사용자 ID 필드
+    };
+  };
 
   const toggleExpand = (columnId: number) => {
     setExpandedColumns(prev => 
@@ -104,7 +163,7 @@ export default function Column() {
   const handleEditColumn = (e: React.MouseEvent, column: Column) => {
     e.stopPropagation();
     setOpenActionMenuId(null);
-    setEditTarget({ id: column.id, title: column.title, content: column.content });
+    setEditTarget({ id: column.id, content: column.content });
   };
 
   const handleDeleteColumn = async (e: React.MouseEvent, columnId: number) => {
@@ -402,8 +461,8 @@ export default function Column() {
                           />
                         </div>
                         <div>
-                          <h3 className="font-semibold">{column.author}</h3>
-                          <p className="text-sm text-gray-500">{column.date}</p>
+                          <div className="font-semibold">{column.author}</div>
+                          <div className="text-sm text-gray-500">{column.date}</div>
                         </div>
                       </div>
                       <button
@@ -430,7 +489,7 @@ export default function Column() {
                           >
                             수정
                           </button>
-                          {currentUserId && column.userId === currentUserId && (
+                          {currentUserId && column.user_id === currentUserId && (
                             <button
                               role="menuitem"
                               onClick={(e) => handleDeleteColumn(e, column.id)}
@@ -443,20 +502,36 @@ export default function Column() {
                       )}
                     </div>
 
-                    {/* 내용 */}
+                    {/* 제목, 내용, 이미지를 가로로 배치 */}
                     <div className="px-4">
-                      <h2 className="text-xl font-bold mb-3">{column.title}</h2>
-                      <div className="relative">
-                        <p className={`text-gray-600 mb-4 ${!expandedColumns.includes(column.id) ? 'line-clamp-2' : ''}`}>
-                          {column.content}
-                        </p>
-                        {column.content.length > 100 && (
+                      <div className="flex gap-4">
+                        {/* 이미지 영역 - 왼쪽으로 이동 */}
+                        {(column.imageUrls || column.image_url) && (
+                          <div className="flex-shrink-0">
+                            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} />
+                          </div>
+                        )}
+
+                        {/* 텍스트 영역 - 오른쪽으로 이동 */}
+                        <div className="flex-1">
+                          <h2 className="text-xl font-bold mb-3">{column.title}</h2>
+                          
+                          {/* 내용 (더보기 버튼으로 표시/숨김) */}
+                          {expandedColumns.includes(column.id) && (
+                            <div className="mb-4">
+                              <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                {column.content}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {/* 더보기/접기 버튼 - 항상 표시 */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleExpand(column.id);
                             }}
-                            className="text-blue-500 hover:text-blue-600 font-medium text-sm flex items-center"
+                            className="text-blue-500 hover:text-blue-600 font-medium text-sm flex items-center mb-4"
                           >
                             {expandedColumns.includes(column.id) ? (
                               <>
@@ -474,7 +549,7 @@ export default function Column() {
                               </>
                             )}
                           </button>
-                        )}
+                        </div>
                       </div>
                     </div>
 
@@ -493,7 +568,7 @@ export default function Column() {
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleCommentClick(column.id);
+                              handleColumnClick(column.id); // 상세페이지로 이동
                             }}
                             className="text-gray-600 hover:text-blue-500 transition-colors"
                           >
@@ -514,8 +589,24 @@ export default function Column() {
 
                       {/* 통계 */}
                       <div className="flex items-center space-x-4 text-sm text-gray-500">
-                        <span className="font-semibold">{column.likes.toLocaleString()} 좋아요</span>
-                        <span>{column.comments} 댓글</span>
+                        <span 
+                          className="font-semibold cursor-pointer hover:text-red-500 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleColumnClick(column.id);
+                          }}
+                        >
+                          {column.likes.toLocaleString()} 좋아요
+                        </span>
+                        <span 
+                          className="cursor-pointer hover:text-blue-500 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleColumnClick(column.id);
+                          }}
+                        >
+                          {column.comments} 댓글
+                        </span>
                         <span>{column.views.toLocaleString()} 조회</span>
                       </div>
 
@@ -596,7 +687,7 @@ export default function Column() {
                 onClose={() => setEditTarget(null)}
                 column={editTarget}
                 onUpdated={(updated) => {
-                  setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, title: updated.title ?? c.title, content: updated.content } : c));
+                  setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, content: updated.content } : c));
                 }}
               />
             )}
