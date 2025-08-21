@@ -95,23 +95,62 @@ export default function Column() {
       }
     }
     
-    // imageUrls 필드 처리 (여러 이미지)
+    // imageUrls 필드 처리 (여러 이미지) - 백엔드 요청에 따라 우선 사용
     if (item.imageUrls) {
-      // 쉼표로 구분된 완성된 URL들을 파싱
-      const urls = item.imageUrls.split(',').map((url: string) => url.trim());
-      multipleImageUrls = urls.join(',');
-      console.log('백엔드 imageUrls 필드 발견:', item.imageUrls);
-      console.log('파싱된 URLs:', urls);
-      console.log('최종 multipleImageUrls:', multipleImageUrls);
+      console.log('백엔드에서 imageUrls 필드 발견:', item.imageUrls);
+      console.log('imageUrls 타입:', typeof item.imageUrls);
+      
+      // imageUrls 배열을 우선 사용하되, URL 변환 필요
+      if (typeof item.imageUrls === 'string') {
+        // 쉼표로 구분된 문자열인 경우
+        const urls = item.imageUrls.split(',').map((url: string) => {
+          const trimmedUrl = url.trim();
+          console.log('처리 중인 URL:', trimmedUrl);
+          
+          if (trimmedUrl.startsWith('/upload/')) {
+            // /upload/파일명.png → /api/board/image/파일명.png
+            const filename = trimmedUrl.replace('/upload/', '');
+            const transformedUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}/api/board/image/${filename}`;
+            console.log('URL 변환:', trimmedUrl, '→', transformedUrl);
+            return transformedUrl;
+          } else if (!trimmedUrl.startsWith('http')) {
+            // 상대 경로인 경우
+            const transformedUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}${trimmedUrl}`;
+            console.log('상대 경로 변환:', trimmedUrl, '→', transformedUrl);
+            return transformedUrl;
+          } else {
+            // 이미 전체 URL인 경우
+            console.log('전체 URL 유지:', trimmedUrl);
+            return trimmedUrl;
+          }
+        });
+        multipleImageUrls = urls.join(',');
+        console.log('최종 변환된 multipleImageUrls:', multipleImageUrls);
+      } else if (Array.isArray(item.imageUrls)) {
+        // 이미 배열인 경우
+        console.log('imageUrls가 이미 배열입니다:', item.imageUrls);
+        multipleImageUrls = item.imageUrls.map((url: string) => {
+          if (url.startsWith('/upload/')) {
+            const filename = url.replace('/upload/', '');
+            return `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}/api/board/image/${filename}`;
+          }
+          return url;
+        }).join(',');
+      }
     } else {
       console.log('백엔드에 imageUrls 필드가 없음');
+    }
+    
+    // imageUrls가 없으면 image_url을 fallback으로 사용
+    if (!multipleImageUrls && imageUrl) {
+      console.log('image_url을 fallback으로 사용:', imageUrl);
+      multipleImageUrls = imageUrl;
     }
     
     // 디버깅: URL 변환 과정 확인
     console.log('원본 imageUrl:', imageUrl);
     console.log('원본 imageUrls:', item.imageUrls);
-    console.log('변환된 fullImageUrl:', fullImageUrl);
-    console.log('변환된 multipleImageUrls:', multipleImageUrls);
+    console.log('최종 multipleImageUrls:', multipleImageUrls);
     console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL);
     
     return {
@@ -508,7 +547,7 @@ export default function Column() {
                         {/* 이미지 영역 - 왼쪽으로 이동 */}
                         {(column.imageUrls || column.image_url) && (
                           <div className="flex-shrink-0">
-                            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} />
+                            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="small" />
                           </div>
                         )}
 

@@ -3,20 +3,44 @@
 import { useState } from 'react';
 
 interface ImageGalleryProps {
-  imageUrl: string;
+  imageUrl: string | string[];
+  size?: 'small' | 'medium' | 'large' | 'custom'; // 크기 조절을 위한 props 추가
 }
 
-export default function ImageGallery({ imageUrl }: ImageGalleryProps) {
+export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGalleryProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
-  // 쉼표로 구분된 이미지 URL을 배열로 변환
-  const imageUrls = imageUrl.split(',');
+  // 크기에 따른 스타일 설정
+  const getSizeStyles = () => {
+    switch (size) {
+      case 'small':
+        return 'w-64 h-40'; // 기존 크기 (256x160px)
+      case 'medium':
+        return 'w-96 h-60'; // 중간 크기 (384x240px)
+      case 'large':
+        return 'w-full h-full min-h-[600px]'; // 전체 크기 + 최소 높이 설정
+      case 'custom':
+        return 'w-[800px] h-[500px]'; // 사용자 정의 크기 (800x500px)
+      default:
+        return 'w-96 h-60'; // 기본값을 중간 크기로 변경
+    }
+  };
+  
+  // imageUrl이 배열 형태인지 확인하고 처리
+  let imageUrls: string[] = [];
+  
+  if (Array.isArray(imageUrl)) {
+    // 이미 배열인 경우
+    imageUrls = imageUrl;
+  } else if (typeof imageUrl === 'string') {
+    // 문자열인 경우 쉼표로 구분하여 배열로 변환
+    imageUrls = imageUrl.split(',').map(url => url.trim());
+  }
   
   // 디버깅을 위한 로그
   console.log('ImageGallery - imageUrl:', imageUrl);
-  console.log('ImageGallery - imageUrl 길이:', imageUrl.length);
   console.log('ImageGallery - imageUrl 타입:', typeof imageUrl);
-  console.log('ImageGallery - 쉼표 포함 여부:', imageUrl.includes(','));
+  console.log('ImageGallery - size:', size);
   console.log('ImageGallery - imageUrls:', imageUrls);
   console.log('ImageGallery - imageUrls 길이:', imageUrls.length);
   console.log('ImageGallery - hasMultipleImages:', imageUrls.length > 1);
@@ -28,11 +52,13 @@ export default function ImageGallery({ imageUrl }: ImageGalleryProps) {
   return (
     <div className="relative">
       {/* 현재 이미지 */}
-      <div className="w-64 h-40 overflow-hidden rounded-lg">
+      <div className={`${getSizeStyles()} overflow-hidden rounded-lg bg-gray-100`}>
         <img 
           src={imageUrls[currentImageIndex].trim()} 
           alt={`칼럼 이미지 ${currentImageIndex + 1}`}
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${
+            size === 'large' ? 'object-cover' : 'object-contain'
+          }`} // large일 때는 cover, 나머지는 contain
           onError={(e) => {
             console.error('이미지 로드 실패:', imageUrls[currentImageIndex]);
             const imgElement = e.currentTarget;
