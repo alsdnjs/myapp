@@ -45,7 +45,11 @@ const LoginModal: React.FC<LoginModalProps> = ({
           const userData = await response.json();
           if (userData.isAuthenticated) {
             if (userData.token) {
-              setToken(userData.token);
+              // 중괄호 제거하여 순수한 JWT 토큰만 저장
+              const cleanToken = userData.token.replace(/[{}]/g, '');
+              console.log("백엔드에서 받은 토큰:", userData.token);
+              console.log("정리된 토큰:", cleanToken);
+              setToken(cleanToken);
             }
             onLoginSuccess({ name: userData.name });
             onClose();

@@ -22,8 +22,13 @@ export default function Header() {
       const tokenFromUrl = searchParams.get('token');
       if (tokenFromUrl) {
         console.log("URL에서 토큰 발견:", tokenFromUrl);
-        setToken(tokenFromUrl);
-        await checkLoginStatus(tokenFromUrl);
+        
+        // 중괄호 제거하여 순수한 JWT 토큰만 저장
+        const cleanToken = tokenFromUrl.replace(/[{}]/g, '');
+        console.log("정리된 토큰:", cleanToken);
+        
+        setToken(cleanToken);
+        await checkLoginStatus(cleanToken);
         console.log("로그인 상태 업데이트 완료, URL을 정리합니다.");
         router.replace('/'); 
       } else {

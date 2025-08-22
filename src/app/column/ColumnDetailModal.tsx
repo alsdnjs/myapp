@@ -16,17 +16,69 @@ interface ColumnDetail {
   content: string;
   image_url?: string;
   imageUrls?: string; // 여러 이미지를 위한 필드 추가
+  isLiked?: boolean; // 좋아요 상태 추가
 }
 
 interface ColumnDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   columnId: number | null;
+  onLikeChange?: (columnId: number, isLiked: boolean, likeCount: number) => void; // 좋아요 상태 변경 콜백 추가
 }
 
-export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnDetailModalProps) {
+export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeChange }: ColumnDetailModalProps) {
   const [column, setColumn] = useState<ColumnDetail | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 좋아요 토글 함수
+  const handleLikeToggle = async () => {
+    if (!column) return;
+    
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const requestUrl = `${baseUrl}/api/board/board/${column.id}/like`;
+      
+      const resp = await fetch(requestUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const newIsLiked = data.isLiked;
+        const newCount = data.likeCount || data.like_count || data.likes || 0;
+
+        // 컬럼 상태 업데이트
+        setColumn(prev => prev ? {
+          ...prev,
+          isLiked: newIsLiked,
+          likes: newCount
+        } : null);
+
+        // 부모 컴포넌트에 좋아요 상태 변경 알림
+        if (onLikeChange) {
+          onLikeChange(column.id, newIsLiked, newCount);
+          console.log('📢 부모 컴포넌트에 좋아요 상태 변경 알림:', { columnId: column.id, isLiked: newIsLiked, count: newCount });
+        }
+
+        console.log('✅ 좋아요 토글 성공:', { columnId: column.id, isLiked: newIsLiked, count: newCount });
+      } else {
+        console.error('❌ 좋아요 토글 실패:', resp.status);
+        alert('좋아요 처리에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('💥 좋아요 토글 오류:', error);
+      alert('좋아요 처리 중 오류가 발생했습니다.');
+    }
+  };
 
   // 이미지 URL 변환 함수
   const transformImageUrl = (imageUrl: string): string => {
@@ -92,6 +144,34 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
         // 제목과 내용을 파싱
         const { title, content } = parseTitleAndContent(data.board_content || data.content || '');
         
+        // 임시 해결책: 전체목록에서 좋아요 상태 가져오기
+        let isLiked = false;
+        if (token) {
+          try {
+            const listResponse = await fetch(`${baseUrl}/api/board/board/authenticated`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (listResponse.ok) {
+              const listData = await listResponse.json();
+              const columnFromList = listData.find((item: any) => 
+                (item.board_id || item.id) === columnId
+              );
+              
+              if (columnFromList) {
+                isLiked = columnFromList.is_liked || columnFromList.isLiked || false;
+                console.log('📋 전체목록에서 좋아요 상태 가져옴:', isLiked);
+              }
+            }
+          } catch (error) {
+            console.log('전체목록에서 좋아요 상태 가져오기 실패:', error);
+          }
+        }
+        
         const columnDetail: ColumnDetail = {
           id: data.board_id || data.id,
           title: title || '제목 없음',
@@ -102,11 +182,8 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
           likes: data.like_count || data.likes || 0,
           content: content || '내용 없음',
           image_url: data.image_url ? transformImageUrl(data.image_url) : undefined,
-          imageUrls: data.imageUrls ? 
-            (Array.isArray(data.imageUrls) 
-              ? data.imageUrls.map((url: string) => transformImageUrl(url)).join(',')
-              : data.imageUrls.split(',').map((url: string) => transformImageUrl(url.trim())).join(',')
-            ) : undefined
+          imageUrls: data.imageUrls ? (Array.isArray(data.imageUrls) ? data.imageUrls.join(',') : data.imageUrls).split(',').map(transformImageUrl).join(',') : undefined,
+          isLiked: isLiked // 임시 해결책으로 가져온 좋아요 상태 사용
         };
         
         setColumn(columnDetail);
@@ -194,12 +271,25 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
             <h1 className="text-xl font-semibold mt-4 mb-2">{loading ? '불러오는 중...' : (column?.title ?? '제목')}</h1>
 
             <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-[#e53e3e]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              <button 
+                onClick={handleLikeToggle}
+                className="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition-colors"
+              >
+                <svg 
+                  className={`w-5 h-5 transition-all duration-200 ${
+                    column?.isLiked ? 'fill-current text-red-500' : 'fill-none'
+                  }`}
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth="2" 
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+                  />
                 </svg>
-                <span className="text-sm font-medium">{column?.likes ?? 0}</span>
-              </div>
+              </button>
               <div className="flex items-center space-x-2">
                 <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -235,7 +325,6 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
           {/* 하단 액션 (선택) */}
           <div className="border-t border-gray-200 p-4 flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <button className="text-gray-600 hover:text-[#e53e3e] transition-colors">좋아요</button>
               <button className="text-gray-600 hover:text-blue-600 transition-colors">공유</button>
             </div>
             <button className="text-gray-600 hover:text-blue-600 transition-colors">북마크</button>

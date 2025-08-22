@@ -3,10 +3,10 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
 import CommentModal from "@/components/CommentModal";
-import ColumnDetailModal from "./ColumnDetailModal";
-import ColumnWriteModal from "./ColumnWriteModal";
-import { getToken } from '@/utils/token';
+import ColumnWriteModal from './ColumnWriteModal';
 import ColumnEditModal, { ColumnEditData } from './ColumnEditModal';
+import ColumnDetailModal from './ColumnDetailModal';
+import { getToken } from '@/utils/token';
 import { parseTitleAndContent } from '@/utils/articleStorage';
 import ImageGallery from '@/components/ImageGallery'; // 이미지 갤러리 컴포넌트 추가
 
@@ -23,6 +23,7 @@ interface Column {
   imageUrls?: string; // 여러 이미지를 위한 필드 추가
   imageIds?: string; // 이미지 ID들을 위한 필드 추가
   user_id?: number; // 사용자 ID 필드 추가
+  isLiked?: boolean; // 좋아요 상태 추가
 }
 
 // Mock data for columns with fixed values
@@ -153,19 +154,29 @@ export default function Column() {
     console.log('최종 multipleImageUrls:', multipleImageUrls);
     console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL);
     
+    // 디버깅: 좋아요 수 매핑 과정 확인
+    console.log('🔍 좋아요 수 매핑 디버깅:', {
+      itemId: item.board_id || item.id,
+      like_count: item.like_count,
+      likes: item.likes,
+      likeCount: item.likeCount,
+      finalLikes: Number(item.like_count || item.likes || 0)
+    });
+    
     return {
-      id: item.board_id || item.id,
+      id: item.board_id || item.id || 0,
       title: title || '제목 없음',
-      author: item.username || item.author || '작성자',
-      date: item.uploaded_at || item.date || '2024.03.21',
-      views: item.view || item.views || item.view_count || 0,
-      comments: item.comment_count || item.comments || 0,
-      likes: item.like_count || item.likes || 0,
+      author: item.username || item.author || '익명',
+      date: item.uploaded_at || item.date || new Date().toISOString(),
+      views: Number(item.view || item.views || 0),
+      comments: Number(item.comment_count || item.comments || 0),
+      likes: Number(item.like_count || item.likes || 0),
       content: content || '내용 없음',
       image_url: fullImageUrl || undefined,
       imageUrls: multipleImageUrls || undefined, // 여러 이미지를 위한 필드
       imageIds: item.imageIds || item.image_ids || undefined, // 이미지 ID들을 위한 필드
-      user_id: item.user_id || item.userId // 사용자 ID 필드
+      user_id: item.user_id || item.userId, // 사용자 ID 필드
+      isLiked: Boolean(item.is_liked || item.isLiked || false) // 좋아요 상태 필드
     };
   };
 
@@ -298,6 +309,146 @@ export default function Column() {
     }
   };
 
+  // 좋아요 토글 함수
+  const handleLikeToggle = async (columnId: number) => {
+    try {
+      const token = getToken();
+      console.log('🔍 좋아요 토글 디버깅:', {
+        columnId,
+        hasToken: !!token,
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : '없음',
+        tokenType: token ? (token.startsWith('Bearer ') ? 'Bearer 포함' : 'Bearer 없음') : '토큰 없음'
+      });
+      
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      // 토큰 형식 확인
+      const authHeader = `Bearer ${token}`;
+      console.log('🔑 Authorization 헤더:', {
+        fullHeader: authHeader,
+        headerLength: authHeader.length,
+        startsWithBearer: authHeader.startsWith('Bearer ')
+      });
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const requestUrl = `${baseUrl}/api/board/board/${columnId}/like`;
+      
+      console.log('🌐 API 요청 정보:', {
+        url: requestUrl,
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
+        fullHeaders: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const resp = await fetch(requestUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+        },
+      });
+
+      console.log('📡 응답 상태:', resp.status, resp.statusText);
+      console.log('📡 응답 헤더:', Object.fromEntries(resp.headers.entries()));
+      
+      if (resp.ok) {
+        const data = await resp.json();
+        console.log('📊 백엔드 응답 데이터:', data);
+        console.log('🔍 응답 데이터 구조:', {
+          hasData: !!data,
+          dataKeys: Object.keys(data),
+          isLiked: data.isLiked,
+          likeCount: data.likeCount,
+          like_count: data.like_count,
+          likes: data.likes
+        });
+        
+        const newIsLiked = data.isLiked;
+        const newCount = data.likeCount || data.like_count || data.likes || 0;
+        
+        console.log('🎯 파싱된 값:', {
+          newIsLiked,
+          newCount,
+          originalLikeCount: data.likeCount,
+          originalLike_count: data.like_count,
+          originalLikes: data.likes
+        });
+
+        // 컬럼 상태 업데이트
+        setColumns(prev => prev.map(col => {
+          if (col.id === columnId) {
+            const updatedColumn = {
+              ...col,
+              isLiked: newIsLiked,
+              likes: newCount
+            };
+            console.log('🔄 컬럼 상태 업데이트:', {
+              columnId,
+              before: { isLiked: col.isLiked, likes: col.likes },
+              after: { isLiked: updatedColumn.isLiked, likes: updatedColumn.likes }
+            });
+            
+            // 로컬스토리지에 좋아요 상태 저장 (임시 해결책)
+            if (typeof window !== 'undefined') {
+              const likeKey = `like_${columnId}`;
+              localStorage.setItem(likeKey, JSON.stringify({
+                isLiked: newIsLiked,
+                count: newCount,
+                timestamp: Date.now()
+              }));
+              console.log('💾 로컬스토리지에 좋아요 상태 저장:', likeKey, { isLiked: newIsLiked, count: newCount });
+            }
+            
+            return updatedColumn;
+          }
+          return col;
+        }));
+
+        // 강제 리렌더링으로 memoizedColumns 즉시 업데이트
+        setForceRefresh(prev => prev + 1);
+
+        console.log('✅ 좋아요 토글 성공:', { columnId, isLiked: newIsLiked, count: newCount });
+      } else {
+        console.error('❌ 좋아요 토글 실패:', resp.status);
+        
+        // 401 오류 상세 정보
+        if (resp.status === 401) {
+          console.error('🔒 401 오류 상세:', {
+            status: resp.status,
+            statusText: resp.statusText,
+            headers: Object.fromEntries(resp.headers.entries()),
+            requestUrl: requestUrl,
+            authHeader: authHeader
+          });
+          
+          // 응답 본문 확인
+          try {
+            const errorText = await resp.text();
+            console.error('📝 오류 응답 본문:', errorText);
+          } catch (e) {
+            console.error('📝 응답 본문 읽기 실패:', e);
+          }
+          
+          alert('인증이 필요합니다. 다시 로그인해주세요.');
+        } else {
+          alert('좋아요 처리에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      console.error('💥 좋아요 토글 오류:', error);
+      alert('좋아요 처리 중 오류가 발생했습니다.');
+    }
+  };
+
   // 인기 칼럼 슬라이더 함수
   const getTotalSliderPages = () => {
     const sortedByViewsDesc = [...memoizedColumns].sort((a, b) => (b.views || 0) - (a.views || 0));
@@ -356,11 +507,18 @@ export default function Column() {
         'Content-Type': 'application/json'
       };
       
+      let apiUrl = `${baseUrl}/api/board/board`;
+      
+      // 로그인한 사용자는 좋아요 상태가 포함된 API 호출
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+        apiUrl = `${baseUrl}/api/board/board/authenticated`;
+        console.log('🔐 글 작성 후: 좋아요 상태 포함 API 호출');
+      } else {
+        console.log('👤 글 작성 후: 기본 API 호출');
       }
       
-      const response = await fetch(`${baseUrl}/api/board/board`, {
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers
       });
@@ -422,11 +580,20 @@ export default function Column() {
           'Content-Type': 'application/json'
         };
         
+        let apiUrl = `${baseUrl}/api/board/board`;
+        
+        // 로그인한 사용자는 좋아요 상태가 포함된 API 호출
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
+          apiUrl = `${baseUrl}/api/board/board/authenticated`;
+          console.log('🔐 로그인 사용자: 좋아요 상태 포함 API 호출');
+        } else {
+          console.log('👤 비로그인 사용자: 기본 API 호출');
         }
         
-        const response = await fetch(`${baseUrl}/api/board/board`, {
+        console.log('🌐 API 호출:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
           method: 'GET',
           headers
         });
@@ -434,6 +601,18 @@ export default function Column() {
         if (response.ok) {
           const data = await response.json();
           console.log('서버에서 받은 글 목록:', data);
+          
+          // 응답 데이터 구조 확인
+          if (data.length > 0) {
+            const firstItem = data[0];
+            console.log('🔍 첫 번째 아이템 구조:', {
+              hasIsLiked: 'isLiked' in firstItem,
+              hasLikeCount: 'likeCount' in firstItem,
+              hasLike_count: 'like_count' in firstItem,
+              keys: Object.keys(firstItem)
+            });
+          }
+          
           const serverColumns: Column[] = data.map(mapServerItemToColumn);
           setColumns(serverColumns);
         } else {
@@ -506,11 +685,18 @@ export default function Column() {
           'Content-Type': 'application/json'
         };
         
+        let apiUrl = `${baseUrl}/api/board/board`;
+        
+        // 로그인한 사용자는 좋아요 상태가 포함된 API 호출
         if (token) {
           headers.Authorization = `Bearer ${token}`;
+          apiUrl = `${baseUrl}/api/board/board/authenticated`;
+          console.log('🔐 수정 후: 좋아요 상태 포함 API 호출');
+        } else {
+          console.log('👤 수정 후: 기본 API 호출');
         }
         
-        const resp = await fetch(`${baseUrl}/api/board/board`, {
+        const resp = await fetch(apiUrl, {
           method: 'GET',
           headers,
         });
@@ -673,7 +859,7 @@ export default function Column() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-2">
                         <span className="text-blue-600 font-bold">#{currentSliderPage * sliderItemsPerPage + index + 1}</span>
-                        <span className="text-sm text-gray-500">{column.views.toLocaleString()} views</span>
+                        <span className="text-sm text-gray-500">{column.views?.toLocaleString() || '0'} views</span>
                       </div>
                     </div>
                     <h3 className="font-bold mb-2 line-clamp-2">{column.title}</h3>
@@ -682,7 +868,6 @@ export default function Column() {
                       <span>{column.author}</span>
                       <div className="flex items-center space-x-3">
                         <span>{column.comments} 댓글</span>
-                        <span>{column.likes} 좋아요</span>
                       </div>
                     </div>
                   </div>
@@ -729,9 +914,19 @@ export default function Column() {
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-gray-200 rounded-full overflow-hidden">
                           <img 
-                            src={`https://i.pravatar.cc/150?img=${column.id}`} 
+                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${column.author}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`}
                             alt={column.author}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // 이미지 로드 실패 시 기본 아바타로 대체
+                              const target = e.target as HTMLImageElement;
+                              target.src = `data:image/svg+xml;base64,${btoa(`
+                                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <rect width="40" height="40" rx="20" fill="#E5E7EB"/>
+                                  <text x="20" y="25" text-anchor="middle" font-family="Arial" font-size="16" fill="#6B7280">${column.author.charAt(0).toUpperCase()}</text>
+                                </svg>
+                              `)}`;
+                            }}
                           />
                         </div>
                         <div>
@@ -832,17 +1027,31 @@ export default function Column() {
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-4">
                           <button 
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLikeToggle(column.id);
+                            }}
                             className="text-gray-600 hover:text-red-500 transition-colors"
                           >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            <svg 
+                              className={`w-5 h-5 transition-all duration-200 ${
+                                column.isLiked ? 'fill-current text-red-500' : 'fill-none'
+                              }`}
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                strokeWidth="2" 
+                                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+                              />
                             </svg>
                           </button>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleColumnClick(column.id); // 상세페이지로 이동
+                              handleColumnClick(column.id);
                             }}
                             className="text-gray-600 hover:text-blue-500 transition-colors"
                           >
@@ -864,15 +1073,6 @@ export default function Column() {
                       {/* 통계 */}
                       <div className="flex items-center space-x-4 text-sm text-gray-500">
                         <span 
-                          className="font-semibold cursor-pointer hover:text-red-500 transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleColumnClick(column.id);
-                          }}
-                        >
-                          {column.likes.toLocaleString()} 좋아요
-                        </span>
-                        <span 
                           className="cursor-pointer hover:text-blue-500 transition-colors"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -881,7 +1081,7 @@ export default function Column() {
                         >
                           {column.comments} 댓글
                         </span>
-                        <span>{column.views.toLocaleString()} 조회</span>
+                        <span>{column.views?.toLocaleString() || '0'} 조회</span>
                       </div>
 
                       {/* 댓글 섹션 */}
@@ -992,6 +1192,28 @@ export default function Column() {
                 setSelectedColumnId(null);
               }}
               columnId={selectedColumnId}
+              onLikeChange={(columnId, isLiked, likeCount) => {
+                // 상세페이지에서 좋아요 상태 변경 시 컬럼페이지 상태도 동기화
+                setColumns(prev => prev.map(col => {
+                  if (col.id === columnId) {
+                    return {
+                      ...col,
+                      isLiked,
+                      likes: likeCount
+                    };
+                  }
+                  return col;
+                }));
+                
+                // 강제 리렌더링으로 화면 갱신
+                setForceRefresh(prev => prev + 1);
+                
+                console.log('🔄 상세페이지 좋아요 상태 변경으로 컬럼페이지 상태 동기화:', {
+                  columnId,
+                  isLiked,
+                  likeCount
+                });
+              }}
             />
 
           </div>
