@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
 import CommentModal from "@/components/CommentModal";
 import ColumnDetailModal from "./ColumnDetailModal";
@@ -202,26 +202,85 @@ export default function Column() {
   const handleEditColumn = (e: React.MouseEvent, column: Column) => {
     e.stopPropagation();
     setOpenActionMenuId(null);
-    setEditTarget({ id: column.id, content: column.content });
+    
+    // content에서 제목과 내용 분리
+    const { title, content } = parseTitleAndContent(column.content);
+    
+    setEditTarget({ 
+      id: column.id, 
+      content: column.content,
+      title: title,
+      imageUrls: column.imageUrls,
+      image_url: column.image_url
+    });
   };
 
   const handleDeleteColumn = async (e: React.MouseEvent, columnId: number) => {
     e.stopPropagation();
     setOpenActionMenuId(null);
+    
+    // 삭제할 컬럼 정보 확인
+    const columnToDelete = columns.find(c => c.id === columnId);
+    if (columnToDelete) {
+      console.log('삭제할 컬럼 정보:', {
+        id: columnToDelete.id,
+        title: columnToDelete.title,
+        imageUrls: columnToDelete.imageUrls,
+        image_url: columnToDelete.image_url
+      });
+      
+      // 이미지가 포함된 컬럼인지 확인
+      if (columnToDelete.imageUrls || columnToDelete.image_url) {
+        console.log('⚠️ 이미지가 포함된 컬럼 삭제 - 백엔드에서 이미지 파일은 삭제되지 않을 수 있습니다');
+      }
+    }
+    
     if (!confirm('정말 삭제하시겠습니까?')) return;
+    
     try {
       const token = getToken();
       if (!token) {
         alert('로그인이 필요합니다.');
         return;
       }
+      
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
       const resp = await fetch(`${baseUrl}/api/board/board/delete/${columnId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
+      
       if (resp.status === 204 || resp.status === 200) {
+        // 컬럼 삭제
         setColumns(prev => prev.filter(c => c.id !== columnId));
+        
+        // 삭제 성공 로그
+        console.log(`✅ 컬럼 ID ${columnId} 삭제 완료`);
+        
+        // 삭제된 컬럼이 현재 선택된 컬럼인 경우 상태 정리
+        if (selectedColumnId === columnId) {
+          setSelectedColumnId(null);
+          setIsDetailModalOpen(false);
+          console.log('삭제된 컬럼이 선택된 상태였으므로 선택 상태 정리');
+        }
+        
+        // 삭제된 컬럼이 수정 대상인 경우 상태 정리
+        if (editTarget && editTarget.id === columnId) {
+          setEditTarget(null);
+          console.log('삭제된 컬럼이 수정 대상이었으므로 수정 상태 정리');
+        }
+        
+        // 삭제된 컬럼이 댓글 모달 대상인 경우 상태 정리
+        if (isCommentModalOpen && selectedColumnId === columnId) {
+          setIsCommentModalOpen(false);
+          setSelectedColumnId(null);
+          console.log('삭제된 컬럼이 댓글 모달 대상이었으므로 댓글 상태 정리');
+        }
+        
+        // 강제 리렌더링으로 화면 갱신
+        setForceRefresh(prev => prev + 1);
+        console.log('삭제 후 강제 리렌더링 완료');
+        
       } else if (resp.status === 403) {
         alert('작성자만 삭제할 수 있습니다.');
       } else if (resp.status === 401) {
@@ -241,7 +300,7 @@ export default function Column() {
 
   // 인기 칼럼 슬라이더 함수
   const getTotalSliderPages = () => {
-    const sortedByViewsDesc = [...columns].sort((a, b) => (b.views || 0) - (a.views || 0));
+    const sortedByViewsDesc = [...memoizedColumns].sort((a, b) => (b.views || 0) - (a.views || 0));
     const topTen = sortedByViewsDesc.slice(0, 10);
     return Math.ceil(topTen.length / sliderItemsPerPage) || 1;
   };
@@ -257,7 +316,7 @@ export default function Column() {
   };
 
   const getVisibleTopColumns = () => {
-    const sortedByViewsDesc = [...columns].sort((a, b) => (b.views || 0) - (a.views || 0));
+    const sortedByViewsDesc = [...memoizedColumns].sort((a, b) => (b.views || 0) - (a.views || 0));
     const topTen = sortedByViewsDesc.slice(0, 10);
     const startIndex = currentSliderPage * sliderItemsPerPage;
     const endIndex = startIndex + sliderItemsPerPage;
@@ -268,7 +327,7 @@ export default function Column() {
   const getVisibleColumns = () => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return columns.slice(startIndex, endIndex);
+    return memoizedColumns.slice(startIndex, endIndex);
   };
 
   const handlePageChange = (page: number) => {
@@ -392,14 +451,190 @@ export default function Column() {
     fetchColumns();
   }, []);
 
+  // 수정 완료 후 전체목록 자동 새로고침
+  const [lastEditTime, setLastEditTime] = useState<number>(0);
+  const [forceRefresh, setForceRefresh] = useState<number>(0);
+  
+  // React.StrictMode 우회를 위한 추가 상태
+  const [strictModeKey, setStrictModeKey] = useState(0);
+  
+  // React.StrictMode 우회를 위한 강제 리렌더링
+  const forceRerender = useCallback(() => {
+    setStrictModeKey(prev => prev + 1);
+    setForceRefresh(prev => prev + 1);
+    console.log('강제 리렌더링 실행됨');
+  }, []);
+  
+  // 컬럼 데이터를 useMemo로 최적화
+  const memoizedColumns = useMemo(() => {
+    return columns;
+  }, [columns, forceRefresh]);
+  
+  // onUpdated 콜백을 useCallback으로 최적화
+  const handleEditUpdated = useCallback(async (updated: { id: number; content: string; shouldRefresh?: boolean; newImageUrls?: string }) => {
+    if (updated.shouldRefresh) {
+      // 새로고침 없이 즉시 상태 업데이트
+      try {
+        console.log('수정 완료! 즉시 상태를 업데이트합니다...');
+        
+        // 새로운 이미지 URL이 있다면 즉시 사용
+        if (updated.newImageUrls) {
+          console.log('새로운 이미지 URL 즉시 사용:', updated.newImageUrls);
+          
+          // 기존 컬럼에서 수정된 컬럼을 찾아서 이미지 URL 업데이트
+          setColumns(prev => prev.map(col => {
+            if (col.id === updated.id) {
+              return {
+                ...col,
+                content: updated.content,
+                imageUrls: updated.newImageUrls,
+                image_url: updated.newImageUrls
+              };
+            }
+            return col;
+          }));
+          
+          // 강제 리렌더링으로 화면 갱신
+          setForceRefresh(prev => prev + 1);
+          console.log('새로운 이미지 URL로 즉시 상태 업데이트 완료');
+          return; // 서버 데이터 재조회 불필요
+        }
+        
+        const token = getToken();
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+        
+        const resp = await fetch(`${baseUrl}/api/board/board`, {
+          method: 'GET',
+          headers,
+        });
+        
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.success && data.data) {
+            const newColumns = data.data.map(mapServerItemToColumn);
+            
+            console.log('기존 컬럼 수:', columns.length);
+            console.log('새 컬럼 수:', newColumns.length);
+            
+            // 이미지 URL 변경 확인
+            const updatedColumn = newColumns.find((col: any) => col.id === updated.id);
+            if (updatedColumn) {
+              console.log('수정된 컬럼의 새로운 이미지 URL:', updatedColumn.imageUrls || updatedColumn.image_url);
+              console.log('수정된 컬럼 전체 정보:', updatedColumn);
+            }
+            
+            // 모든 컬럼의 이미지 URL 확인
+            console.log('모든 컬럼의 이미지 URL:');
+            newColumns.forEach((col: any, index: number) => {
+              console.log(`컬럼 ${index}:`, {
+                id: col.id,
+                title: col.title,
+                imageUrls: col.imageUrls,
+                image_url: col.image_url
+              });
+            });
+            
+            // 즉시 상태 업데이트 (새로고침 없이)
+            setColumns(newColumns);
+            console.log('상태 즉시 업데이트 완료');
+            
+            // 이미지 수정 후 추가 검증
+            if (updatedColumn && (updatedColumn.imageUrls || updatedColumn.image_url)) {
+              console.log('이미지가 포함된 수정 - 추가 검증 실행');
+              
+              // 이미지 URL 유효성 검증
+              const imageUrls = updatedColumn.imageUrls ? updatedColumn.imageUrls.split(',') : [updatedColumn.image_url];
+              console.log('검증할 이미지 URL들:', imageUrls);
+              
+              // 이미지 접근 가능 여부 확인 (선택적)
+              imageUrls.forEach((url: string, index: number) => {
+                if (url) {
+                  const fullUrl = url.startsWith('http') ? url : `http://localhost:8080${url}`;
+                  console.log(`이미지 ${index + 1} URL: ${fullUrl}`);
+                }
+              });
+            }
+            
+            // 강제 리렌더링으로 화면 갱신
+            setForceRefresh(prev => prev + 1);
+            console.log('강제 리렌더링 완료');
+            
+            // 추가 보장을 위한 한 번 더 리렌더링
+            setTimeout(() => {
+              setForceRefresh(prev => prev + 1);
+              console.log('추가 리렌더링 완료');
+            }, 100);
+            
+            console.log('수정 후 서버 데이터로 화면 업데이트 완료');
+          }
+        }
+      } catch (error) {
+        console.error('수정 후 데이터 재조회 실패:', error);
+        // 실패 시 로컬 상태만 업데이트
+        setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, content: updated.content } : c));
+      }
+    } else {
+      // 로컬 상태만 업데이트
+      setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, content: updated.content } : c));
+    }
+  }, [columns.length]);
+  
+  // forceRefresh 상태 변경 시 추가 처리
+  useEffect(() => {
+    if (forceRefresh > 0) {
+      console.log('강제 리렌더링 실행:', forceRefresh);
+      
+      // 상태가 제대로 반영되었는지 확인하고 추가 처리
+      setTimeout(() => {
+        console.log('현재 컬럼 상태 확인:', columns.length);
+        
+        // 상태가 비어있다면 추가 처리
+        if (columns.length === 0) {
+          console.log('컬럼 상태가 비어있음 - 추가 처리 필요');
+          // 강제로 한 번 더 리렌더링
+          setForceRefresh(prev => prev + 1);
+        }
+      }, 200);
+    }
+  }, [forceRefresh, columns.length]);
+  
+  // columns 상태 변경 시 추가 처리
+  useEffect(() => {
+    console.log('columns 상태 변경됨:', columns.length);
+    
+    // 상태가 변경되었을 때 추가 리렌더링
+    if (columns.length > 0) {
+      setForceRefresh(prev => prev + 1);
+      console.log('columns 상태 변경으로 추가 리렌더링 실행');
+      
+      // 이미지가 포함된 컬럼이 있는지 확인
+      const hasImageColumns = columns.some((col: any) => col.imageUrls || col.image_url);
+      if (hasImageColumns) {
+        console.log('이미지가 포함된 컬럼 발견 - 추가 검증 실행');
+        // 이미지 로딩 상태 확인
+        setTimeout(() => {
+          setForceRefresh(prev => prev + 1);
+          console.log('이미지 컬럼을 위한 추가 리렌더링 실행');
+        }, 200);
+      }
+    }
+  }, [columns.length]);
+
   if (!mounted) {
     return null; // 서버 사이드 렌더링 시에는 아무것도 렌더링하지 않음
   }
 
-  const selectedColumn = columns.find(c => c.id === selectedColumnId);
+  const selectedColumn = memoizedColumns.find(c => c.id === selectedColumnId);
 
   return (
-    <div className="min-h-screen pt-4 bg-gray-50">
+    <div className="min-h-screen pt-4 bg-gray-50" key={strictModeKey}>
       <div className="container mx-auto px-4 py-2">
         <div className="flex gap-8">
           {/* Main Content */}
@@ -482,7 +717,7 @@ export default function Column() {
                   </button>
                 )}
               </div>
-              <div className="space-y-8">
+              <div className="space-y-4" key={`columns-${forceRefresh}-${columns.length}-${Date.now()}-${Math.random()}`}>
                 {getVisibleColumns().map((column) => (
                   <div 
                     key={column.id} 
@@ -725,9 +960,7 @@ export default function Column() {
                 isOpen={!!editTarget}
                 onClose={() => setEditTarget(null)}
                 column={editTarget}
-                onUpdated={(updated) => {
-                  setColumns(prev => prev.map(c => c.id === updated.id ? { ...c, content: updated.content } : c));
-                }}
+                onUpdated={handleEditUpdated}
               />
             )}
 

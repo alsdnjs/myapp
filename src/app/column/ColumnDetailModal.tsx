@@ -150,7 +150,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
       <div className={`bg-white/95 rounded-lg w-full max-w-7xl h-[90vh] flex overflow-hidden transform transition-all duration-500 ease-in-out ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
         {/* 왼쪽: 이미지 섹션 */}
-        <div className="w-2/3 h-full bg-gray-100 rounded-l-lg overflow-hidden"> {/* w-1/2에서 w-2/3로 변경 */}
+        <div className="w-1/2 h-full bg-gray-100 rounded-l-lg overflow-hidden"> {/* w-3/4에서 w-1/2로 변경 */}
           {(column?.imageUrls || column?.image_url) ? (
             <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="large" />
           ) : (
@@ -166,7 +166,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId }: ColumnD
         </div>
 
         {/* 오른쪽: 상세 섹션 */}
-        <div className="w-1/3 flex flex-col"> {/* w-1/2에서 w-1/3로 변경 */}
+        <div className="w-1/2 flex flex-col"> {/* w-1/4에서 w-1/2로 변경 */}
           {/* 작성자/닫기/제목/통계 - 댓글 모달 상단과 유사 */}
           <div className="border-b border-gray-200 p-4">
             <div className="flex items-center justify-between">
