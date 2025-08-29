@@ -17,6 +17,7 @@ interface ColumnDetail {
   image_url?: string;
   imageUrls?: string; // 여러 이미지를 위한 필드 추가
   isLiked?: boolean; // 좋아요 상태 추가
+  commentList?: any[]; // 댓글 목록 필드 추가
 }
 
 interface ColumnDetailModalProps {
@@ -29,6 +30,14 @@ interface ColumnDetailModalProps {
 export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeChange }: ColumnDetailModalProps) {
   const [column, setColumn] = useState<ColumnDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [commentInput, setCommentInput] = useState(''); // 댓글 입력 상태
+  
+  // 댓글 수정 관련 상태
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentContent, setEditCommentContent] = useState<string>('');
+  
+  // 현재 사용자 정보
+  const [currentUser, setCurrentUser] = useState<{ id: number; username: string } | null>(null);
 
   // 좋아요 토글 함수
   const handleLikeToggle = async () => {
@@ -80,6 +89,253 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
     }
   };
 
+  // 댓글 수정 함수
+  const handleCommentEdit = async (commentId: number) => {
+    if (!editCommentContent.trim()) {
+      alert('댓글 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const requestUrl = `${baseUrl}/api/board/comment/${commentId}`;
+      
+      console.log('✏️ 댓글 수정 API 호출:', requestUrl);
+      console.log('📝 수정할 내용:', editCommentContent);
+
+      const resp = await fetch(requestUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: new URLSearchParams({
+          comment_content: editCommentContent
+        })
+      });
+
+      if (resp.ok) {
+        const responseText = await resp.text();
+        console.log('✅ 댓글 수정 성공:', responseText);
+        
+        // 수정 모드 종료
+        setEditingCommentId(null);
+        setEditCommentContent('');
+        
+        // 댓글 목록 새로고침
+        await loadColumnDetail();
+        
+        alert('댓글이 수정되었습니다.');
+      } else {
+        console.error('❌ 댓글 수정 실패:', resp.status);
+        if (resp.status === 401) {
+          alert('권한이 없습니다.');
+        } else if (resp.status === 400) {
+          alert('댓글 내용을 입력해주세요.');
+        } else {
+          alert('댓글 수정에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      console.error('💥 댓글 수정 오류:', error);
+      alert('댓글 수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 댓글 수정 취소 함수
+  const handleCommentEditCancel = () => {
+    setEditingCommentId(null);
+    setEditCommentContent('');
+  };
+
+  // 댓글 수정 모드 시작 함수
+  const handleCommentEditStart = (comment: any) => {
+    setEditingCommentId(comment.comment_id);
+    setEditCommentContent(comment.comment_content);
+  };
+
+  // 댓글 삭제 함수
+  const handleCommentDelete = async (commentId: number) => {
+    // 삭제 확인
+    if (!confirm('정말로 이 댓글을 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const requestUrl = `${baseUrl}/api/board/comment/${commentId}`;
+      
+      console.log('🗑️ 댓글 삭제 API 호출:', requestUrl);
+
+      const resp = await fetch(requestUrl, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        }
+      });
+
+      if (resp.ok) {
+        const responseText = await resp.text();
+        console.log('✅ 댓글 삭제 성공:', responseText);
+        
+        // 댓글 목록 새로고침
+        await loadColumnDetail();
+        
+        alert('댓글이 삭제되었습니다.');
+      } else {
+        console.error('❌ 댓글 삭제 실패:', resp.status);
+        if (resp.status === 401) {
+          alert('권한이 없습니다.');
+        } else if (resp.status === 404) {
+          alert('댓글을 찾을 수 없습니다.');
+        } else {
+          alert('댓글 삭제에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      console.error('💥 댓글 삭제 오류:', error);
+      alert('댓글 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 현재 사용자 정보 가져오기
+  const loadCurrentUser = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        setCurrentUser(null);
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/user`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('👤 /api/user 응답 데이터:', userData);
+        
+        if (userData.isAuthenticated) {
+          // 여러 가능한 필드에서 사용자 ID 찾기
+          const userId = userData.userId || userData.id || userData.user_id || userData.userId;
+          const username = userData.username || userData.name;
+          
+          console.log('👤 추출된 사용자 정보:', { userId, username });
+          
+          if (userId) {
+            setCurrentUser({
+              id: userId,
+              username: username
+            });
+            console.log('✅ 현재 사용자 정보 설정 완료:', { id: userId, username });
+          } else {
+            console.error('❌ 사용자 ID를 찾을 수 없음:', userData);
+            setCurrentUser(null);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('사용자 정보 로드 실패:', error);
+      setCurrentUser(null);
+    }
+  };
+
+  // 댓글 작성 함수
+  const handleCommentSubmit = async () => {
+    if (!column || !commentInput.trim()) return;
+
+    try {
+      const token = getToken();
+      console.log('🔍 댓글 작성 디버깅:', {
+        columnId: column.id,
+        hasToken: !!token,
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : '없음'
+      });
+      
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      // 올바른 API 엔드포인트로 수정
+      const requestUrl = `${baseUrl}/api/board/comment/${column.id}`;
+      
+      console.log('🌐 댓글 작성 API 호출:', requestUrl);
+      console.log('🔑 요청 헤더:', {
+        'Authorization': `Bearer ${token.substring(0, 20)}...`,
+        // 'Content-Type' 헤더 제거됨
+      });
+      console.log('📝 요청 본문:', { comment_content: commentInput });
+
+      const resp = await fetch(requestUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // 'Content-Type' 헤더 제거 (브라우저가 자동 설정)
+        },
+        body: new URLSearchParams({
+          comment_content: commentInput // 백엔드 필드명에 맞춤
+        })
+      });
+
+      console.log('📡 응답 상태:', resp.status, resp.statusText);
+
+      if (resp.ok) {
+        // 백엔드 응답이 한글 텍스트이므로 text()로 처리
+        const responseText = await resp.text();
+        setCommentInput(''); // 입력 필드 초기화
+        await loadColumnDetail(); // 댓글 목록 다시 로드
+        console.log('✅ 댓글 작성 성공:', responseText);
+      } else {
+        console.error('❌ 댓글 작성 실패:', resp.status);
+        
+        // 401 오류 상세 정보
+        if (resp.status === 401) {
+          console.error('🔒 401 오류 상세:', {
+            status: resp.status,
+            statusText: resp.statusText,
+            requestUrl: requestUrl,
+            hasToken: !!token
+          });
+          
+          // 응답 본문 확인
+          try {
+            const errorText = await resp.text();
+            console.error('📝 오류 응답 본문:', errorText);
+          } catch (e) {
+            console.error('📝 응답 본문 읽기 실패:', e);
+          }
+          
+          alert('인증이 필요합니다. 다시 로그인해주세요.');
+        } else {
+          alert('댓글 작성에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      console.error('💥 댓글 작성 오류:', error);
+      alert('댓글 작성 중 오류가 발생했습니다.');
+    }
+  };
+
   // 이미지 URL 변환 함수
   const transformImageUrl = (imageUrl: string): string => {
     if (imageUrl.startsWith('/upload/')) {
@@ -98,6 +354,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
   useEffect(() => {
     if (isOpen && columnId) {
       loadColumnDetail();
+      loadCurrentUser();
     }
   }, [isOpen, columnId]);
 
@@ -172,6 +429,55 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
           }
         }
         
+        // 댓글 목록 가져오기
+        let commentList = [];
+        try {
+          console.log('🔍 댓글 목록 로드 시작 - columnId:', columnId);
+          
+          // 댓글 조회 (인증 없이도 접근 가능)
+          const commentsResponse = await fetch(`${baseUrl}/api/board/comment/${columnId}`, {
+            method: 'GET'
+            // 인증 헤더 제거 - 모든 사용자가 댓글을 볼 수 있음
+          });
+          console.log('📡 댓글 API 응답 상태:', commentsResponse.status);
+          
+          if (commentsResponse.ok) {
+            const comments = await commentsResponse.json();
+            console.log('📝 댓글 목록 로드 성공:', comments);
+            console.log('📝 댓글 개수:', comments.length);
+            console.log('📝 댓글 데이터 구조:', comments[0] ? Object.keys(comments[0]) : '댓글 없음');
+            console.log('📝 첫 번째 댓글 상세:', comments[0] || '댓글 없음');
+            
+            // 각 댓글에 대댓글 로드
+            const commentsWithReplies = await Promise.all(
+              comments.map(async (comment: any) => {
+                if (comment.parent_id === null) { // 최상위 댓글만
+                  try {
+                    const repliesResponse = await fetch(`${baseUrl}/api/board/comment/replies/${comment.comment_id}`, {
+                      method: 'GET'
+                      // 인증 헤더 제거 - 모든 사용자가 대댓글을 볼 수 있음
+                    });
+                    if (repliesResponse.ok) {
+                      const replies = await repliesResponse.json();
+                      return { ...comment, replies };
+                    }
+                  } catch (error) {
+                    console.error('대댓글 로드 실패:', error);
+                  }
+                }
+                return comment;
+              })
+            );
+            
+            commentList = commentsWithReplies;
+            console.log('🔄 댓글과 대댓글 로드 완료:', commentList);
+            console.log('🔄 commentList 길이:', commentList.length);
+            console.log('🔄 commentList 타입:', typeof commentList);
+          }
+        } catch (error) {
+          console.error('댓글 목록 로드 실패:', error);
+        }
+        
         const columnDetail: ColumnDetail = {
           id: data.board_id || data.id,
           title: title || '제목 없음',
@@ -183,8 +489,13 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
           content: content || '내용 없음',
           image_url: data.image_url ? transformImageUrl(data.image_url) : undefined,
           imageUrls: data.imageUrls ? (Array.isArray(data.imageUrls) ? data.imageUrls.join(',') : data.imageUrls).split(',').map(transformImageUrl).join(',') : undefined,
-          isLiked: isLiked // 임시 해결책으로 가져온 좋아요 상태 사용
+          isLiked: isLiked, // 임시 해결책으로 가져온 좋아요 상태 사용
+          commentList: commentList // 댓글 목록 추가
         };
+        
+        console.log('🏗️ columnDetail 객체 생성 완료:', columnDetail);
+        console.log('🏗️ commentList 포함 여부:', !!columnDetail.commentList);
+        console.log('🏗️ commentList 길이:', columnDetail.commentList?.length || 0);
         
         setColumn(columnDetail);
       } else {
@@ -318,6 +629,133 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
             ) : (
               <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
                 {column?.content ?? ''}
+              </div>
+            )}
+          </div>
+
+          {/* 댓글 섹션 */}
+          <div className="border-t border-gray-200 p-4">
+            <h3 className="text-lg font-semibold mb-4">댓글</h3>
+            
+            {/* 댓글 입력 폼 */}
+            <div className="mb-6">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  placeholder="댓글을 입력하세요..."
+                  className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={commentInput || ''}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleCommentSubmit();
+                    }
+                  }}
+                />
+                <button 
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  onClick={handleCommentSubmit}
+                >
+                  작성
+                </button>
+              </div>
+            </div>
+            
+            {/* 댓글 목록 */}
+            {column?.commentList && column.commentList.length > 0 ? (
+              <div className="space-y-4">
+                {column.commentList.map((comment) => (
+                  <div key={comment.comment_id} className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full flex-shrink-0">
+                        <div className="w-full h-full flex items-center justify-center text-sm text-gray-600">
+                          {comment.username.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-3">
+                            <span className="font-semibold text-gray-900">{comment.username}</span>
+                            <span className="text-sm text-gray-500">
+                              {new Date(comment.uploaded_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          
+                          {/* 액션 버튼 (작성자에게만 표시) */}
+                          {!editingCommentId && currentUser && currentUser.id === comment.user_id && (
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleCommentEditStart(comment)}
+                                className="text-sm text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded hover:bg-blue-50"
+                              >
+                                수정
+                              </button>
+                              <button
+                                onClick={() => handleCommentDelete(comment.comment_id)}
+                                className="text-sm text-red-600 hover:text-red-800 transition-colors px-2 py-1 rounded hover:bg-red-50"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* 댓글 내용 (수정 모드 또는 일반 모드) */}
+                        {editingCommentId === comment.comment_id ? (
+                          <div className="mb-3">
+                            <input
+                              type="text"
+                              value={editCommentContent}
+                              onChange={(e) => setEditCommentContent(e.target.value)}
+                              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="댓글을 입력하세요..."
+                            />
+                            <div className="flex items-center space-x-2 mt-2">
+                              <button
+                                onClick={() => handleCommentEdit(comment.comment_id)}
+                                className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                              >
+                                저장
+                              </button>
+                              <button
+                                onClick={handleCommentEditCancel}
+                                className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-700 mb-3">{comment.comment_content}</p>
+                        )}
+                        
+
+                        
+                        {/* 대댓글 표시 */}
+                        {comment.replies && comment.replies.length > 0 && (
+                          <div className="ml-6 space-y-3 border-l-2 border-blue-200 pl-4">
+                            {comment.replies.map((reply: any) => (
+                              <div key={reply.comment_id} className="bg-white rounded p-3">
+                                <div className="flex items-center space-x-3 mb-2">
+                                  <span className="text-sm font-semibold text-gray-900">{reply.username}</span>
+                                  <span className="text-xs text-gray-500">
+                                    {new Date(reply.uploaded_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-700">{reply.comment_content}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                <p>아직 댓글이 없습니다.</p>
+                <p className="text-sm">첫 번째 댓글을 작성해보세요!</p>
               </div>
             )}
           </div>

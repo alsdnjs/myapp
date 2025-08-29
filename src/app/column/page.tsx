@@ -24,6 +24,21 @@ interface Column {
   imageIds?: string; // 이미지 ID들을 위한 필드 추가
   user_id?: number; // 사용자 ID 필드 추가
   isLiked?: boolean; // 좋아요 상태 추가
+  commentInput?: string; // 댓글 입력 필드 상태
+  commentList?: Comment[]; // 댓글 목록 추가
+}
+
+// 댓글 인터페이스 추가
+interface Comment {
+  comment_id: number;
+  user_id: number;
+  board_id: number;
+  comment_content: string;
+  parent_id: number | null;
+  uploaded_at: string;
+  username: string;
+  user_profile_image?: string;
+  replies?: Comment[]; // 대댓글 목록
 }
 
 // Mock data for columns with fixed values
@@ -485,17 +500,15 @@ export default function Column() {
     setCurrentPage(page);
   };
 
-  const handleCommentClick = (columnId: number) => {
-    setSelectedColumnId(columnId);
-    setIsCommentModalOpen(true);
-  };
-
   const handleColumnClick = (columnId: number) => {
     console.log('글 클릭됨 - columnId:', columnId);
     setSelectedColumnId(columnId);
     setIsDetailModalOpen(true);
     // 상세에서 조회수가 증가하므로 UX를 위해 낙관적 증가
     setColumns(prev => prev.map(c => c.id === columnId ? { ...c, views: (c.views || 0) + 1 } : c));
+    
+    // 댓글 목록 자동 로드
+    // loadComments(columnId); // 상세페이지로 이동
   };
 
   const handleAddColumn = async (newColumn: Column) => {
@@ -819,6 +832,12 @@ export default function Column() {
 
   const selectedColumn = memoizedColumns.find(c => c.id === selectedColumnId);
 
+  // 댓글 제출 함수 - 상세페이지로 이동
+  // const handleCommentSubmit = async (columnId: number) => { ... };
+
+  // 댓글 목록 로드 함수 - 상세페이지로 이동  
+  // const loadComments = async (columnId: number) => { ... };
+
   return (
     <div className="min-h-screen pt-4 bg-gray-50" key={strictModeKey}>
       <div className="container mx-auto px-4 py-2">
@@ -1084,19 +1103,8 @@ export default function Column() {
                         <span>{column.views?.toLocaleString() || '0'} 조회</span>
                       </div>
 
-                      {/* 댓글 섹션 */}
-                      <div className="mt-4">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            placeholder="댓글을 입력하세요..."
-                            className="flex-1 px-4 py-2 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <button className="text-blue-500 font-semibold hover:text-blue-600">
-                            작성
-                          </button>
-                        </div>
-                      </div>
+                      {/* 댓글 섹션 - 제거됨 */}
+                      {/* 댓글 입력 폼과 목록을 상세페이지로 이동 */}
                     </div>
                   </div>
                 ))}
