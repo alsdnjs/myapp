@@ -40,6 +40,9 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
   const [replyingToCommentId, setReplyingToCommentId] = useState<number | null>(null);
   const [replyInput, setReplyInput] = useState<string>('');
   
+  // 답글 표시 상태 관리
+  const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
+  
   // 현재 사용자 정보
   const [currentUser, setCurrentUser] = useState<{ id: number; username: string } | null>(null);
 
@@ -233,6 +236,19 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
   const handleReplyCancel = () => {
     setReplyingToCommentId(null);
     setReplyInput('');
+  };
+
+  // 답글 표시/숨김 토글
+  const toggleReplies = (commentId: number) => {
+    setExpandedReplies(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(commentId)) {
+        newSet.delete(commentId);
+      } else {
+        newSet.add(commentId);
+      }
+      return newSet;
+    });
   };
 
   // 대댓글 수정 함수
@@ -799,8 +815,8 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
             </div>
           </div>
 
-          {/* 본문 (스크롤) */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* 본문 (고정 높이) */}
+          <div className="p-4 border-b border-gray-200">
             {loading ? (
               <div className="animate-pulse">
                 <div className="h-6 bg-gray-200 rounded mb-3"></div>
@@ -816,8 +832,9 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
             )}
           </div>
 
-          {/* 댓글 섹션 */}
-          <div className="border-t border-gray-200 p-4">
+          {/* 댓글 섹션 (별도 스크롤) */}
+          <div className="flex-1 overflow-y-auto border-t border-gray-200">
+            <div className="p-4">
             <h3 className="text-lg font-semibold mb-4">댓글</h3>
             
             {/* 댓글 입력 폼 */}
@@ -919,7 +936,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                               onClick={() => handleReplyStart(comment.comment_id)}
                               className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
                             >
-                              💬 답글
+                              💬 답글 작성
                             </button>
                           </div>
                         )}
@@ -956,9 +973,33 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                           </div>
                         )}
                         
-                        {/* 대댓글 표시 */}
+                        {/* 답글 토글 버튼 */}
                         {comment.replies && comment.replies.length > 0 && (
-                          <div className="ml-6 space-y-3 border-l-2 border-blue-200 pl-4">
+                          <div className="mt-2">
+                            <button
+                              onClick={() => toggleReplies(comment.comment_id)}
+                              className="text-sm text-blue-600 hover:text-blue-800 transition-colors flex items-center space-x-1"
+                            >
+                              <span>
+                                {expandedReplies.has(comment.comment_id) ? '답글 숨기기' : `답글 ${comment.replies.length}개 보기`}
+                              </span>
+                              <svg 
+                                className={`w-4 h-4 transition-transform duration-200 ${
+                                  expandedReplies.has(comment.comment_id) ? 'rotate-180' : ''
+                                }`}
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* 대댓글 표시 (토글 가능) */}
+                        {comment.replies && comment.replies.length > 0 && expandedReplies.has(comment.comment_id) && (
+                          <div className="ml-6 space-y-3 border-l-2 border-blue-200 pl-4 mt-3">
                             {comment.replies.map((reply: any) => (
                               <div key={reply.comment_id} className="bg-white rounded p-3">
                                 <div className="flex items-center justify-between mb-2">
@@ -1031,6 +1072,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                 <p className="text-sm">첫 번째 댓글을 작성해보세요!</p>
               </div>
             )}
+            </div>
           </div>
 
           {/* 하단 액션 (선택) */}
