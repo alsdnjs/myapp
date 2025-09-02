@@ -96,6 +96,82 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
     }
   };
 
+  // 신고하기 함수
+  const handleReportColumn = async () => {
+    if (!column) {
+      alert('게시글을 찾을 수 없습니다.');
+      return;
+    }
+    
+    // 신고 사유 선택
+    const reportReasons = [
+      '스팸/광고성 게시글',
+      '부적절한 내용',
+      '저작권 침해',
+      '개인정보 노출',
+      '기타'
+    ];
+    
+    const selectedReason = prompt(
+      `"${column.title}" 게시글을 신고합니다.\n\n신고 사유를 선택해주세요:\n\n${reportReasons.map((reason, index) => `${index + 1}. ${reason}`).join('\n')}\n\n번호를 입력하세요 (1-5):`
+    );
+    
+    if (!selectedReason) return; // 취소
+    
+    const reasonIndex = parseInt(selectedReason) - 1;
+    if (isNaN(reasonIndex) || reasonIndex < 0 || reasonIndex >= reportReasons.length) {
+      alert('올바른 신고 사유를 선택해주세요.');
+      return;
+    }
+    
+    const reportReason = reportReasons[reasonIndex];
+    
+    // 추가 설명 입력 (선택사항)
+    const additionalComment = prompt('추가 설명이 있다면 입력해주세요 (선택사항):');
+    
+    if (!confirm(`다음 내용으로 신고하시겠습니까?\n\n게시글: ${column.title}\n신고 사유: ${reportReason}${additionalComment ? `\n추가 설명: ${additionalComment}` : ''}`)) {
+      return;
+    }
+    
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+      
+      // 백엔드 구현 전이므로 임시로 성공 메시지 표시
+      console.log('🚨 상세페이지 신고 정보:', {
+        columnId: column.id,
+        title: column.title,
+        reason: reportReason,
+        additionalComment,
+        reporterToken: token ? `${token.substring(0, 20)}...` : '없음'
+      });
+      
+      // TODO: 백엔드 API 구현 후 실제 신고 요청
+      // const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      // const resp = await fetch(`${baseUrl}/api/board/report`, {
+      //   method: 'POST',
+      //   headers: { 
+      //     Authorization: `Bearer ${token}`,
+      //     'Content-Type': 'application/json'
+      //   },
+      //   body: JSON.stringify({
+      //     board_id: column.id,
+      //     report_reason: reportReason,
+      //     additional_comment: additionalComment || ''
+      //   })
+      // });
+      
+      alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+      
+    } catch (err) {
+      console.error('신고 오류:', err);
+      alert('신고 처리 중 오류가 발생했습니다.');
+    }
+  };
+
   // 댓글 수정 함수
   const handleCommentEdit = async (commentId: number) => {
     if (!editCommentContent.trim()) {
@@ -780,54 +856,67 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
 
             <h1 className="text-xl font-semibold mt-4 mb-2">{loading ? '불러오는 중...' : (column?.title ?? '제목')}</h1>
 
-            <div className="flex items-center space-x-6">
-              <button 
-                onClick={handleLikeToggle}
-                className="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition-colors"
-              >
-                <svg 
-                  className={`w-5 h-5 transition-all duration-200 ${
-                    column?.isLiked ? 'fill-current text-red-500' : 'fill-none'
-                  }`}
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-6">
+                <button 
+                  onClick={handleLikeToggle}
+                  className="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition-colors"
                 >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth="2" 
-                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
-                  />
+                  <svg 
+                    className={`w-5 h-5 transition-all duration-200 ${
+                      column?.isLiked ? 'fill-current text-red-500' : 'fill-none'
+                    }`}
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth="2" 
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+                    />
+                  </svg>
+                </button>
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span className="text-sm font-medium">
+                    {(() => {
+                      const commentListLength = column?.commentList?.length || 0;
+                      const backendComments = column?.comments || 0;
+                      const finalCount = commentListLength || backendComments || 0;
+                      
+                      console.log('🔍 댓글 개수 디버깅:', {
+                        commentListLength,
+                        backendComments,
+                        finalCount,
+                        hasCommentList: !!column?.commentList,
+                        commentListType: typeof column?.commentList
+                      });
+                      
+                      return finalCount;
+                    })()}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-sm font-medium">{column?.views?.toLocaleString?.() ?? 0}</span>
+                </div>
+              </div>
+              
+              {/* 신고하기 버튼 */}
+              <button 
+                onClick={handleReportColumn}
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
+                <span>신고</span>
               </button>
-              <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <span className="text-sm font-medium">
-                  {(() => {
-                    const commentListLength = column?.commentList?.length || 0;
-                    const backendComments = column?.comments || 0;
-                    const finalCount = commentListLength || backendComments || 0;
-                    
-                    console.log('🔍 댓글 개수 디버깅:', {
-                      commentListLength,
-                      backendComments,
-                      finalCount,
-                      hasCommentList: !!column?.commentList,
-                      commentListType: typeof column?.commentList
-                    });
-                    
-                    return finalCount;
-                  })()}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span className="text-sm font-medium">{column?.views?.toLocaleString?.() ?? 0}</span>
-              </div>
             </div>
           </div>
 

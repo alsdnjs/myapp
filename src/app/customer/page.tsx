@@ -9,10 +9,12 @@ interface FAQ {
 }
 
 interface Notice {
-  id: number;
-  title: string;
-  date: string;
-  content: string;
+  notice_id: number;
+  notice_title: string;
+  notice_content: string;
+  created_at: string;
+  is_important: number;
+  view_count: number;
 }
 
 interface Inquiry {
@@ -51,26 +53,7 @@ const faqs: FAQ[] = [
   }
 ];
 
-const notices: Notice[] = [
-  {
-    id: 1,
-    title: "서비스 이용약관 개정 안내",
-    date: "2024.03.21",
-    content: "더 나은 서비스 제공을 위해 이용약관이 개정되었습니다. 자세한 내용은 공지사항을 확인해주세요."
-  },
-  {
-    id: 2,
-    title: "시스템 점검 안내",
-    date: "2024.03.20",
-    content: "3월 22일 02:00 ~ 04:00 동안 시스템 점검이 진행됩니다. 해당 시간 동안 서비스 이용이 제한될 수 있습니다."
-  },
-  {
-    id: 3,
-    title: "신규 기능 업데이트 안내",
-    date: "2024.03.19",
-    content: "칼럼 작성 시 이미지 첨부 기능이 추가되었습니다. 더 풍부한 콘텐츠를 작성해보세요."
-  }
-];
+
 
 const inquiries: Inquiry[] = [
   {
@@ -97,9 +80,56 @@ export default function CustomerService() {
   const [inquiryTitle, setInquiryTitle] = useState('');
   const [inquiryContent, setInquiryContent] = useState('');
   const [isMounted, setIsMounted] = useState(false);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(true);
+
+  // 공지사항 목록 가져오기
+  const fetchNotices = async () => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      
+      // 토큰이 있으면 헤더에 추가, 없으면 빈 헤더
+      const token = localStorage.getItem('jwt_token');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      console.log('🔍 공지사항 API 호출:', {
+        url: `${baseUrl}/api/notice/list`,
+        token: token ? '있음' : '없음'
+      });
+      
+      // 사용자용 API는 인증 없이도 접근 가능해야 함
+      const response = await fetch(`${baseUrl}/api/notice/list`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('고객센터 공지사항 목록:', data);
+        setNotices(data);
+      } else {
+        console.error('공지사항 목록 조회 실패:', response.status, response.statusText);
+        setNotices([]);
+      }
+    } catch (error) {
+      console.error('공지사항 목록 조회 오류:', error);
+      setNotices([]);
+    } finally {
+      setNoticesLoading(false);
+    }
+  };
 
   useEffect(() => {
     setIsMounted(true);
+    fetchNotices();
   }, []);
 
   const toggleFaq = (id: number) => {
@@ -168,36 +198,55 @@ export default function CustomerService() {
             <h2 className="text-xl font-bold text-[#e53e3e]">공지사항</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            {notices.map((notice) => (
-              <div key={notice.id} className="px-6 py-4">
-                <button
-                  onClick={() => toggleNotice(notice.id)}
-                  className="w-full text-left"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-gray-900">{notice.title}</h3>
-                      <p className="text-sm text-gray-500 mt-1">{notice.date}</p>
-                    </div>
-                    <svg
-                      className={`w-5 h-5 text-gray-500 transform transition-transform duration-200 ${
-                        expandedNotice === notice.id ? 'rotate-180' : ''
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </button>
-                {expandedNotice === notice.id && (
-                  <div className="mt-4 text-gray-600 bg-gray-50 p-4 rounded-lg">
-                    {notice.content}
-                  </div>
-                )}
+            {noticesLoading ? (
+              <div className="px-6 py-8 text-center">
+                <div className="text-gray-500">공지사항을 불러오는 중...</div>
               </div>
-            ))}
+            ) : notices.length === 0 ? (
+              <div className="px-6 py-8 text-center">
+                <div className="text-gray-500">등록된 공지사항이 없습니다.</div>
+              </div>
+            ) : (
+              notices.map((notice) => (
+                <div key={notice.notice_id} className="px-6 py-4">
+                  <button
+                    onClick={() => toggleNotice(notice.notice_id)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-medium text-gray-900">{notice.notice_title}</h3>
+                          {(notice.is_important == 1) && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              ⭐ 중요
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {new Date(notice.created_at).toLocaleDateString()} • 조회수 {notice.view_count?.toLocaleString() || 0}회
+                        </p>
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-gray-500 transform transition-transform duration-200 ${
+                          expandedNotice === notice.notice_id ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+                  {expandedNotice === notice.notice_id && (
+                    <div className="mt-4 text-gray-600 bg-gray-50 p-4 rounded-lg whitespace-pre-wrap">
+                      {notice.notice_content}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
 

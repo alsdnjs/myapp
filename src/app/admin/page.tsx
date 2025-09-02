@@ -137,6 +137,255 @@ export default function AdminDashboard() {
     }
   };
 
+  // 공지사항 목록 상태
+  const [notices, setNotices] = useState<any[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(true);
+  const [selectedNotice, setSelectedNotice] = useState<any>(null);
+  const [isNoticeDetailModalOpen, setIsNoticeDetailModalOpen] = useState(false);
+  const [deletingNoticeId, setDeletingNoticeId] = useState<number | null>(null);
+  
+  // 공지사항 작성/수정 모달 상태
+  const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
+  const [editingNotice, setEditingNotice] = useState<any>(null);
+  const [noticeForm, setNoticeForm] = useState({
+    title: '',
+    content: '',
+    isImportant: false
+  });
+  const [noticeSubmitting, setNoticeSubmitting] = useState(false);
+
+  // 공지사항 삭제 함수
+  const handleDeleteNotice = async (noticeId: number) => {
+    if (!confirm('정말 이 공지사항을 삭제하시겠습니까?')) {
+      return;
+    }
+
+    setDeletingNoticeId(noticeId);
+
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/admin/notice/${noticeId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        alert('공지사항이 성공적으로 삭제되었습니다.');
+        // 공지사항 목록 새로고침
+        fetchNotices();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(`삭제 실패: ${errorData.message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('공지사항 삭제 오류:', error);
+      alert('공지사항 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setDeletingNoticeId(null);
+    }
+  };
+
+  // 공지사항 작성/수정 모달 열기
+  const openNoticeModal = (notice?: any) => {
+    if (notice) {
+      // 수정 모드
+      console.log('🔍 수정 모드 - 원본 데이터:', {
+        notice_title: notice.notice_title,
+        is_important: notice.is_important,
+        is_important_type: typeof notice.is_important
+      });
+      setEditingNotice(notice);
+      const isImportant = notice.is_important === 1 || notice.is_important === "1" || notice.is_important === true;
+      console.log('🔍 수정 모드 - 변환된 isImportant:', isImportant);
+      setNoticeForm({
+        title: notice.notice_title,
+        content: notice.notice_content,
+        isImportant: isImportant
+      });
+    } else {
+      // 작성 모드
+      setEditingNotice(null);
+      setNoticeForm({
+        title: '',
+        content: '',
+        isImportant: false
+      });
+    }
+    setIsNoticeModalOpen(true);
+  };
+
+  // 공지사항 작성/수정 제출
+  const handleNoticeSubmit = async () => {
+    if (!noticeForm.title.trim()) {
+      alert('제목을 입력해주세요.');
+      return;
+    }
+    if (!noticeForm.content.trim()) {
+      alert('내용을 입력해주세요.');
+      return;
+    }
+
+    setNoticeSubmitting(true);
+
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const isEdit = !!editingNotice;
+      const url = isEdit 
+        ? `${baseUrl}/api/admin/notice/${editingNotice.notice_id}`
+        : `${baseUrl}/api/admin/notice/create`;
+      
+      const method = isEdit ? 'PUT' : 'POST';
+
+      console.log('🔍 공지사항 제출 디버깅:', {
+        url,
+        method,
+        baseUrl,
+        token: token ? `${token.substring(0, 20)}...` : '없음',
+        tokenLength: token ? token.length : 0,
+        requestBody: {
+          notice_title: noticeForm.title,
+          notice_content: noticeForm.content,
+          is_important: noticeForm.isImportant
+        }
+      });
+
+      const requestBody = {
+        notice_title: noticeForm.title,
+        notice_content: noticeForm.content,
+        is_important: noticeForm.isImportant
+      };
+
+      console.log('📝 요청 본문 상세:', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('📡 응답 상태:', response.status, response.statusText);
+
+      if (response.ok) {
+        alert(isEdit ? '공지사항이 수정되었습니다.' : '공지사항이 작성되었습니다.');
+        setIsNoticeModalOpen(false);
+        fetchNotices(); // 목록 새로고침
+      } else {
+        // 응답 텍스트 먼저 확인
+        const responseText = await response.text();
+        console.log('📄 응답 텍스트:', responseText);
+        
+        let errorData = {};
+        try {
+          errorData = JSON.parse(responseText);
+        } catch (e) {
+          console.log('JSON 파싱 실패, 텍스트 응답:', responseText);
+        }
+        
+        console.error('❌ 공지사항 제출 실패:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseText,
+          errorData,
+          errorMessage: (errorData as any).message,
+          errorDetails: errorData
+        });
+        console.log('🔍 errorDetails 상세:', JSON.stringify(errorData, null, 2));
+        alert(`${isEdit ? '수정' : '작성'} 실패: ${(errorData as any).message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('공지사항 제출 오류:', error);
+      alert('공지사항 처리 중 오류가 발생했습니다.');
+    } finally {
+      setNoticeSubmitting(false);
+    }
+  };
+
+  // 공지사항 모달 닫기
+  const closeNoticeModal = () => {
+    setIsNoticeModalOpen(false);
+    setEditingNotice(null);
+    setNoticeForm({
+      title: '',
+      content: '',
+      isImportant: false
+    });
+    setNoticeSubmitting(false);
+  };
+
+  // 실제 공지사항 목록 가져오기
+  const fetchNotices = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        console.log('토큰이 없습니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/admin/notice/list`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('공지사항 목록:', data);
+        setNotices(data);
+      } else {
+        console.error('공지사항 목록 조회 실패:', response.status);
+        // 실패 시 하드코딩 데이터 사용
+        setNotices([
+          {
+            notice_id: 1,
+            notice_title: "서비스 이용약관 개정 안내",
+            notice_content: "서비스 이용약관이 개정되었습니다.",
+            admin_id: 1,
+            created_at: "2024-01-20T00:00:00Z",
+            updated_at: "2024-01-20T00:00:00Z",
+            is_important: 1,
+            view_count: 1247
+          },
+          {
+            notice_id: 2,
+            notice_title: "개인정보처리방침 업데이트",
+            notice_content: "개인정보처리방침이 업데이트되었습니다.",
+            admin_id: 1,
+            created_at: "2024-01-18T00:00:00Z",
+            updated_at: "2024-01-18T00:00:00Z",
+            is_important: 1,
+            view_count: 892
+          }
+        ]);
+      }
+    } catch (error) {
+      console.error('공지사항 목록 조회 오류:', error);
+      // 오류 시 하드코딩 데이터 사용
+      setNotices([]);
+    } finally {
+      setNoticesLoading(false);
+    }
+  };
+
   // 실제 게시물 목록 가져오기
   const fetchPosts = async () => {
     try {
@@ -200,10 +449,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // 컴포넌트 마운트 시 관리자 정보와 게시물 목록 가져오기
+  // 컴포넌트 마운트 시 관리자 정보와 게시물 목록, 공지사항 목록 가져오기
   useEffect(() => {
     fetchAdminInfo();
     fetchPosts();
+    fetchNotices();
   }, []);
 
   // 임시 데이터 (나중에 실제 데이터로 교체)
@@ -323,9 +573,7 @@ export default function AdminDashboard() {
                   '관리자님, 안녕하세요!'
                 )}
               </span>
-              <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
-                <Settings className="w-5 h-5" />
-              </button>
+             
             </div>
           </div>
         </div>
@@ -826,15 +1074,324 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 고객센터 관리 탭 */}
+        {activeTab === 'support' && (
+          <div className="space-y-6">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">고객센터 관리</h2>
+                <p className="text-gray-600 mt-1">공지사항과 문의사항을 관리하세요</p>
+              </div>
+              <div className="flex items-center space-x-3">
+                <button 
+                  onClick={() => openNoticeModal()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  공지사항 작성
+                </button>
+                <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                  문의사항 답변
+                </button>
+              </div>
+            </div>
+
+            {/* 통계 카드 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-blue-100 rounded-lg">
+                    <FileText className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">전체 공지사항</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {noticesLoading ? '...' : notices.length}
+                    </p>
+                    <p className="text-sm text-blue-600 mt-1">
+                      중요: {noticesLoading ? '...' : notices.filter(n => n.is_important === 1).length}개
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-green-100 rounded-lg">
+                    <Headphones className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">전체 문의사항</p>
+                    <p className="text-3xl font-bold text-gray-900">42</p>
+                    <p className="text-sm text-green-600 mt-1">답변 완료: 38개</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-yellow-100 rounded-lg">
+                    <Clock className="w-6 h-6 text-yellow-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">답변 대기</p>
+                    <p className="text-3xl font-bold text-gray-900">4</p>
+                    <p className="text-sm text-yellow-600 mt-1">처리 필요</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-purple-100 rounded-lg">
+                    <TrendingUp className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">이번 주 문의</p>
+                    <p className="text-3xl font-bold text-gray-900">8</p>
+                    <p className="text-sm text-purple-600 mt-1">+12% 증가</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 탭 네비게이션 */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8 px-6">
+                  <button className="py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium text-sm">
+                    공지사항 관리
+                  </button>
+                  <button className="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
+                    문의사항 관리
+                  </button>
+                </nav>
+              </div>
+
+              {/* 공지사항 관리 섹션 */}
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">공지사항 목록</h3>
+                  <div className="flex items-center space-x-3">
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="공지사항 검색..."
+                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <select className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option>전체 상태</option>
+                      <option>활성</option>
+                      <option>비활성</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 공지사항 테이블 */}
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">제목</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작성일</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">조회수</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {noticesLoading ? (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-8 text-center">
+                            <div className="text-gray-500">공지사항을 불러오는 중...</div>
+                          </td>
+                        </tr>
+                      ) : notices.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-8 text-center">
+                            <div className="text-gray-500">공지사항이 없습니다.</div>
+                          </td>
+                        </tr>
+                      ) : (
+                        notices.map((notice) => (
+                          <tr key={notice.notice_id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                {(() => { console.log('🔍 공지사항 데이터:', notice.notice_title, 'is_important:', notice.is_important, '타입:', typeof notice.is_important); return null; })()}
+                                {(notice.is_important === 1 || notice.is_important === "1" || notice.is_important === true) && (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 mr-2">
+                                    중요
+                                  </span>
+                                )}
+                                <div className="text-sm font-medium text-gray-900">{notice.notice_title}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(notice.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {notice.view_count?.toLocaleString() || 0}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                활성
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                              <button 
+                                onClick={() => {
+                                  setSelectedNotice(notice);
+                                  setIsNoticeDetailModalOpen(true);
+                                }}
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                보기
+                              </button>
+                              <button 
+                                onClick={() => openNoticeModal(notice)}
+                                className="text-green-600 hover:text-green-900"
+                              >
+                                편집
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteNotice(notice.notice_id)}
+                                disabled={deletingNoticeId === notice.notice_id}
+                                className={`${
+                                  deletingNoticeId === notice.notice_id
+                                    ? 'text-gray-400 cursor-not-allowed'
+                                    : 'text-red-600 hover:text-red-900'
+                                }`}
+                              >
+                                {deletingNoticeId === notice.notice_id ? '삭제 중...' : '삭제'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 페이지네이션 */}
+                <div className="flex items-center justify-between mt-6">
+                  <div className="text-sm text-gray-700">
+                    총 <span className="font-medium">{noticesLoading ? '...' : notices.length}</span>개 중 <span className="font-medium">1-{noticesLoading ? '...' : notices.length}</span>개 표시
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-500 hover:bg-gray-50">
+                      이전
+                    </button>
+                    <button className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm">1</button>
+                    <button className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-500 hover:bg-gray-50">2</button>
+                    <button className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-500 hover:bg-gray-50">3</button>
+                    <button className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-500 hover:bg-gray-50">
+                      다음
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 문의사항 관리 섹션 */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">최근 문의사항</h3>
+                  <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                    전체 보기 →
+                  </button>
+                </div>
+
+                {/* 문의사항 카드 목록 */}
+                <div className="space-y-4">
+                  {[
+                    {
+                      id: 1,
+                      title: "로그인 문제가 발생합니다",
+                      user: "김철수",
+                      date: "2024-01-20 14:30",
+                      status: "pending",
+                      priority: "high",
+                      content: "로그인 시 계속 오류가 발생하고 있습니다. 확인 부탁드립니다."
+                    },
+                    {
+                      id: 2,
+                      title: "게시글 작성이 안됩니다",
+                      user: "이영희",
+                      date: "2024-01-20 11:15",
+                      status: "answered",
+                      priority: "medium",
+                      content: "게시글 작성 버튼을 눌러도 반응이 없습니다."
+                    },
+                    {
+                      id: 3,
+                      title: "이미지 업로드 오류",
+                      user: "박민수",
+                      date: "2024-01-19 16:45",
+                      status: "answered",
+                      priority: "low",
+                      content: "이미지 업로드 시 파일이 제대로 올라가지 않습니다."
+                    },
+                    {
+                      id: 4,
+                      title: "계정 삭제 요청",
+                      user: "최지영",
+                      date: "2024-01-19 09:20",
+                      status: "pending",
+                      priority: "high",
+                      content: "개인정보 보호를 위해 계정 삭제를 요청합니다."
+                    }
+                  ].map((inquiry) => (
+                    <div key={inquiry.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-2">
+                            <h4 className="text-sm font-medium text-gray-900">{inquiry.title}</h4>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              inquiry.priority === 'high' 
+                                ? 'bg-red-100 text-red-800'
+                                : inquiry.priority === 'medium'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {inquiry.priority === 'high' ? '높음' : inquiry.priority === 'medium' ? '보통' : '낮음'}
+                            </span>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              inquiry.status === 'pending' 
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {inquiry.status === 'pending' ? '답변 대기' : '답변 완료'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-2">{inquiry.content}</p>
+                          <div className="flex items-center space-x-4 text-xs text-gray-500">
+                            <span>작성자: {inquiry.user}</span>
+                            <span>작성일: {inquiry.date}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 ml-4">
+                          <button className="text-blue-600 hover:text-blue-900 text-sm">보기</button>
+                          {inquiry.status === 'pending' && (
+                            <button className="text-green-600 hover:text-green-900 text-sm">답변</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 다른 탭들 (나중에 구현) */}
-        {activeTab !== 'dashboard' && activeTab !== 'posts' && activeTab !== 'users' && (
+        {activeTab !== 'dashboard' && activeTab !== 'posts' && activeTab !== 'users' && activeTab !== 'support' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Settings className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {activeTab === 'comments' && '댓글 관리'}
-              {activeTab === 'support' && '고객센터 관리'}
               {activeTab === 'news' && '뉴스 통계'}
             </h3>
             <p className="text-gray-600">이 기능은 현재 개발 중입니다.</p>
@@ -855,6 +1412,185 @@ export default function AdminDashboard() {
               fetchPosts();
             }}
           />
+        )}
+
+        {/* 공지사항 상세 모달 */}
+        {isNoticeDetailModalOpen && selectedNotice && (
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-3">
+                    <h2 className="text-xl font-bold text-gray-900">공지사항 상세</h2>
+                    {(selectedNotice.is_important === 1 || selectedNotice.is_important === "1" || selectedNotice.is_important === true) && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                        ⭐ 중요
+                      </span>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setIsNoticeDetailModalOpen(false);
+                      setSelectedNotice(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* 제목 */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">제목</h3>
+                    <div className="text-gray-700 bg-gray-50 p-4 rounded-lg">
+                      {selectedNotice.notice_title}
+                    </div>
+                  </div>
+
+                  {/* 내용 */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">내용</h3>
+                    <div className="text-gray-700 bg-gray-50 p-4 rounded-lg whitespace-pre-wrap">
+                      {selectedNotice.notice_content}
+                    </div>
+                  </div>
+
+                  {/* 정보 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">작성일</h3>
+                      <div className="text-gray-700">
+                        {new Date(selectedNotice.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">조회수</h3>
+                      <div className="text-gray-700">
+                        {selectedNotice.view_count?.toLocaleString() || 0}회
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 버튼 */}
+                  <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+                    <button
+                      onClick={() => {
+                        setIsNoticeDetailModalOpen(false);
+                        setSelectedNotice(null);
+                      }}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      닫기
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsNoticeDetailModalOpen(false);
+                        openNoticeModal(selectedNotice);
+                      }}
+                      className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      수정
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 공지사항 작성/수정 모달 */}
+        {isNoticeModalOpen && (
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {editingNotice ? '공지사항 수정' : '공지사항 작성'}
+                  </h2>
+                  <button 
+                    onClick={closeNoticeModal}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* 제목 입력 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      제목 *
+                    </label>
+                    <input
+                      type="text"
+                      value={noticeForm.title}
+                      onChange={(e) => setNoticeForm(prev => ({ ...prev, title: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="공지사항 제목을 입력하세요"
+                      maxLength={255}
+                    />
+                  </div>
+
+                  {/* 내용 입력 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      내용 *
+                    </label>
+                    <textarea
+                      value={noticeForm.content}
+                      onChange={(e) => setNoticeForm(prev => ({ ...prev, content: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="공지사항 내용을 입력하세요"
+                      rows={8}
+                    />
+                  </div>
+
+                  {/* 중요 표시 체크박스 */}
+                  <div className="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                    <input
+                      type="checkbox"
+                      id="isImportant"
+                      checked={noticeForm.isImportant}
+                      onChange={(e) => setNoticeForm(prev => ({ ...prev, isImportant: e.target.checked }))}
+                      className="w-5 h-5 text-blue-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    />
+                    <label htmlFor="isImportant" className="text-sm font-medium text-gray-700 cursor-pointer">
+                      ⭐ 중요 공지사항으로 설정
+                    </label>
+                  </div>
+
+                  {/* 버튼 */}
+                  <div className="flex items-center justify-end space-x-3 pt-4">
+                    <button
+                      onClick={closeNoticeModal}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleNoticeSubmit}
+                      disabled={noticeSubmitting}
+                      className={`px-4 py-2 text-white rounded-lg transition-colors ${
+                        noticeSubmitting
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {noticeSubmitting 
+                        ? (editingNotice ? '수정 중...' : '작성 중...')
+                        : (editingNotice ? '수정' : '작성')
+                      }
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
