@@ -79,6 +79,53 @@ export default function Column() {
   // columns 상태가 선언된 후에 totalPages 계산
   const totalPages = Math.ceil(columns.length / itemsPerPage);
 
+  // 댓글 개수 계산 함수 (백엔드 필드 우선 사용)
+  const calculateCommentCount = (item: any): number => {
+    // 1. 백엔드에서 제공하는 카운트 필드 사용
+    if (item.comment_count !== undefined) return Number(item.comment_count);
+    if (item.comments !== undefined) return Number(item.comments);
+    if (item.commentCount !== undefined) return Number(item.commentCount);
+    
+    // 2. commentList가 있으면 실제 길이 사용
+    if (item.commentList && Array.isArray(item.commentList)) {
+      return item.commentList.length;
+    }
+    
+    // 3. 기본값 0
+    return 0;
+  };
+
+  // 댓글 개수를 백엔드에서 가져오는 함수
+  const fetchCommentCount = async (boardId: number): Promise<number> => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/board/comment/${boardId}`);
+      
+      if (response.ok) {
+        const comments = await response.json();
+        
+        // 댓글 개수 계산 (대댓글 포함)
+        let totalCount = 0;
+        if (Array.isArray(comments)) {
+          totalCount = comments.length;
+          
+          // 대댓글 개수도 계산
+          for (const comment of comments) {
+            if (comment.replies && Array.isArray(comment.replies)) {
+              totalCount += comment.replies.length;
+            }
+          }
+        }
+        
+        return totalCount;
+      } else {
+        return 0;
+      }
+    } catch (error) {
+      return 0;
+    }
+  };
+
   // 서버 아이템을 화면 모델로 변환
   const mapServerItemToColumn = (item: any): Column => {
     const { title, content } = parseTitleAndContent(item.board_content || item.content);
@@ -184,7 +231,7 @@ export default function Column() {
       author: item.username || item.author || '익명',
       date: item.uploaded_at || item.date || new Date().toISOString(),
       views: Number(item.view || item.views || 0),
-      comments: Number(item.comment_count || item.comments || 0),
+      comments: calculateCommentCount(item),
       likes: Number(item.like_count || item.likes || 0),
       content: content || '내용 없음',
       image_url: fullImageUrl || undefined,
@@ -622,12 +669,35 @@ export default function Column() {
               hasIsLiked: 'isLiked' in firstItem,
               hasLikeCount: 'likeCount' in firstItem,
               hasLike_count: 'like_count' in firstItem,
+              hasCommentList: 'commentList' in firstItem,
+              hasCommentCount: 'comment_count' in firstItem,
+              hasComments: 'comments' in firstItem,
               keys: Object.keys(firstItem)
+            });
+            
+            // 댓글 관련 필드 상세 확인
+            console.log('🔍 댓글 관련 필드 상세:', {
+              commentList: firstItem.commentList,
+              comment_count: firstItem.comment_count,
+              comments: firstItem.comments,
+              commentCount: firstItem.commentCount
             });
           }
           
           const serverColumns: Column[] = data.map(mapServerItemToColumn);
-          setColumns(serverColumns);
+          
+          // 각 게시글의 댓글 개수를 가져와서 업데이트
+          const columnsWithCommentCounts = await Promise.all(
+            serverColumns.map(async (column) => {
+              const commentCount = await fetchCommentCount(column.id);
+              return {
+                ...column,
+                comments: commentCount
+              };
+            })
+          );
+          
+          setColumns(columnsWithCommentCounts);
         } else {
           console.error('글 목록 가져오기 실패:', response.status);
           // 실패 시 기존 mock 데이터 사용
@@ -662,6 +732,20 @@ export default function Column() {
     return columns;
   }, [columns, forceRefresh]);
   
+  // 댓글 개수 업데이트 함수
+  const updateCommentCount = async (columnId: number) => {
+    try {
+      const commentCount = await fetchCommentCount(columnId);
+      setColumns(prev => prev.map(col => 
+        col.id === columnId 
+          ? { ...col, comments: commentCount }
+          : col
+      ));
+    } catch (error) {
+      // 에러 발생 시 무시 (기본값 0 유지)
+    }
+  };
+
   // onUpdated 콜백을 useCallback으로 최적화
   const handleEditUpdated = useCallback(async (updated: { id: number; content: string; shouldRefresh?: boolean; newImageUrls?: string }) => {
     if (updated.shouldRefresh) {
@@ -1099,6 +1183,7 @@ export default function Column() {
                           }}
                         >
                           {column.comments} 댓글
+
                         </span>
                         <span>{column.views?.toLocaleString() || '0'} 조회</span>
                       </div>
