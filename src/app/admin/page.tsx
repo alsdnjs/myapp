@@ -153,6 +153,17 @@ export default function AdminDashboard() {
     isImportant: false
   });
   const [noticeSubmitting, setNoticeSubmitting] = useState(false);
+  
+  // 문의사항 관련 상태
+  const [inquiries, setInquiries] = useState<any[]>([]);
+  const [inquiriesLoading, setInquiriesLoading] = useState(true);
+  const [selectedInquiry, setSelectedInquiry] = useState<any>(null);
+  const [isInquiryDetailModalOpen, setIsInquiryDetailModalOpen] = useState(false);
+  const [isInquiryReplyModalOpen, setIsInquiryReplyModalOpen] = useState(false);
+  const [inquiryReplyForm, setInquiryReplyForm] = useState({
+    reply_content: ''
+  });
+  const [inquiryReplySubmitting, setInquiryReplySubmitting] = useState(false);
 
   // 공지사항 삭제 함수
   const handleDeleteNotice = async (noticeId: number) => {
@@ -318,6 +329,51 @@ export default function AdminDashboard() {
     }
   };
 
+  // 문의사항 답변 제출
+  const handleInquiryReply = async () => {
+    if (!inquiryReplyForm.reply_content.trim()) {
+      alert('답변 내용을 입력해주세요.');
+      return;
+    }
+
+    setInquiryReplySubmitting(true);
+
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/admin/inquiry/${selectedInquiry.inquiry_id}/answer`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          answer_content: inquiryReplyForm.reply_content
+        })
+      });
+
+      if (response.ok) {
+        alert('답변이 등록되었습니다.');
+        setIsInquiryReplyModalOpen(false);
+        setInquiryReplyForm({ reply_content: '' });
+        fetchInquiries(); // 목록 새로고침
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(`답변 등록 실패: ${errorData.message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('답변 등록 오류:', error);
+      alert('답변 등록 중 오류가 발생했습니다.');
+    } finally {
+      setInquiryReplySubmitting(false);
+    }
+  };
+
   // 공지사항 모달 닫기
   const closeNoticeModal = () => {
     setIsNoticeModalOpen(false);
@@ -328,6 +384,45 @@ export default function AdminDashboard() {
       isImportant: false
     });
     setNoticeSubmitting(false);
+  };
+
+  // 문의사항 목록 가져오기
+  const fetchInquiries = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        console.log('토큰이 없습니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/admin/inquiry/list`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('문의사항 목록:', data);
+        
+        // 최신순으로 정렬
+        const sortedInquiries = data.sort((a: any, b: any) => {
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setInquiries(sortedInquiries);
+      } else {
+        console.error('문의사항 목록 조회 실패:', response.status);
+        setInquiries([]);
+      }
+    } catch (error) {
+      console.error('문의사항 목록 조회 오류:', error);
+      setInquiries([]);
+    } finally {
+      setInquiriesLoading(false);
+    }
   };
 
   // 실제 공지사항 목록 가져오기
@@ -350,7 +445,18 @@ export default function AdminDashboard() {
       if (response.ok) {
         const data = await response.json();
         console.log('공지사항 목록:', data);
-        setNotices(data);
+        
+        // 중요 공지사항을 맨 위로 정렬
+        const sortedNotices = data.sort((a: any, b: any) => {
+          // 중요 공지사항이 먼저
+          if (a.is_important == 1 && b.is_important != 1) return -1;
+          if (a.is_important != 1 && b.is_important == 1) return 1;
+          
+          // 중요도가 같으면 최신순
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setNotices(sortedNotices);
       } else {
         console.error('공지사항 목록 조회 실패:', response.status);
         // 실패 시 하드코딩 데이터 사용
@@ -454,6 +560,7 @@ export default function AdminDashboard() {
     fetchAdminInfo();
     fetchPosts();
     fetchNotices();
+    fetchInquiries();
   }, []);
 
   // 임시 데이터 (나중에 실제 데이터로 교체)
@@ -1090,14 +1197,11 @@ export default function AdminDashboard() {
                 >
                   공지사항 작성
                 </button>
-                <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                  문의사항 답변
-                </button>
               </div>
             </div>
 
             {/* 통계 카드 */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <div className="flex items-center">
                   <div className="p-3 bg-blue-100 rounded-lg">
@@ -1121,8 +1225,12 @@ export default function AdminDashboard() {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">전체 문의사항</p>
-                    <p className="text-3xl font-bold text-gray-900">42</p>
-                    <p className="text-sm text-green-600 mt-1">답변 완료: 38개</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {inquiriesLoading ? '...' : inquiries.length}
+                    </p>
+                    <p className="text-sm text-green-600 mt-1">
+                      답변 완료: {inquiriesLoading ? '...' : inquiries.filter(i => i.inquiry_status === 'answered').length}개
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1133,37 +1241,18 @@ export default function AdminDashboard() {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">답변 대기</p>
-                    <p className="text-3xl font-bold text-gray-900">4</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {inquiriesLoading ? '...' : inquiries.filter(i => i.inquiry_status === 'pending').length}
+                    </p>
                     <p className="text-sm text-yellow-600 mt-1">처리 필요</p>
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-purple-100 rounded-lg">
-                    <TrendingUp className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">이번 주 문의</p>
-                    <p className="text-3xl font-bold text-gray-900">8</p>
-                    <p className="text-sm text-purple-600 mt-1">+12% 증가</p>
-                  </div>
-                </div>
-              </div>
+
             </div>
 
-            {/* 탭 네비게이션 */}
+            {/* 공지사항 관리 섹션 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="border-b border-gray-200">
-                <nav className="flex space-x-8 px-6">
-                  <button className="py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium text-sm">
-                    공지사항 관리
-                  </button>
-                  <button className="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
-                    문의사항 관리
-                  </button>
-                </nav>
-              </div>
 
               {/* 공지사항 관리 섹션 */}
               <div className="p-6">
@@ -1295,7 +1384,7 @@ export default function AdminDashboard() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">최근 문의사항</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">문의사항</h3>
                   <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
                     전체 보기 →
                   </button>
@@ -1303,82 +1392,62 @@ export default function AdminDashboard() {
 
                 {/* 문의사항 카드 목록 */}
                 <div className="space-y-4">
-                  {[
-                    {
-                      id: 1,
-                      title: "로그인 문제가 발생합니다",
-                      user: "김철수",
-                      date: "2024-01-20 14:30",
-                      status: "pending",
-                      priority: "high",
-                      content: "로그인 시 계속 오류가 발생하고 있습니다. 확인 부탁드립니다."
-                    },
-                    {
-                      id: 2,
-                      title: "게시글 작성이 안됩니다",
-                      user: "이영희",
-                      date: "2024-01-20 11:15",
-                      status: "answered",
-                      priority: "medium",
-                      content: "게시글 작성 버튼을 눌러도 반응이 없습니다."
-                    },
-                    {
-                      id: 3,
-                      title: "이미지 업로드 오류",
-                      user: "박민수",
-                      date: "2024-01-19 16:45",
-                      status: "answered",
-                      priority: "low",
-                      content: "이미지 업로드 시 파일이 제대로 올라가지 않습니다."
-                    },
-                    {
-                      id: 4,
-                      title: "계정 삭제 요청",
-                      user: "최지영",
-                      date: "2024-01-19 09:20",
-                      status: "pending",
-                      priority: "high",
-                      content: "개인정보 보호를 위해 계정 삭제를 요청합니다."
-                    }
-                  ].map((inquiry) => (
-                    <div key={inquiry.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <h4 className="text-sm font-medium text-gray-900">{inquiry.title}</h4>
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              inquiry.priority === 'high' 
-                                ? 'bg-red-100 text-red-800'
-                                : inquiry.priority === 'medium'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-green-100 text-green-800'
-                            }`}>
-                              {inquiry.priority === 'high' ? '높음' : inquiry.priority === 'medium' ? '보통' : '낮음'}
-                            </span>
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              inquiry.status === 'pending' 
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-green-100 text-green-800'
-                            }`}>
-                              {inquiry.status === 'pending' ? '답변 대기' : '답변 완료'}
-                            </span>
+                  {inquiriesLoading ? (
+                    <div className="text-center py-8">
+                      <div className="text-gray-500">문의사항을 불러오는 중...</div>
+                    </div>
+                  ) : inquiries.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="text-gray-500">등록된 문의사항이 없습니다.</div>
+                    </div>
+                  ) : (
+                    inquiries.slice(0, 4).map((inquiry) => (
+                      <div key={inquiry.inquiry_id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <h4 className="text-sm font-medium text-gray-900">{inquiry.inquiry_title}</h4>
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                inquiry.inquiry_status === 'pending' 
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {inquiry.inquiry_status === 'pending' ? '답변 대기' : '답변 완료'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2 line-clamp-2">{inquiry.inquiry_content}</p>
+                            <div className="flex items-center space-x-4 text-xs text-gray-500">
+                              <span>작성자: {inquiry.user_name || inquiry.userName || inquiry.username || inquiry.user_id || '사용자'}</span>
+                              <span>작성일: {new Date(inquiry.created_at).toLocaleDateString()}</span>
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-600 mb-2">{inquiry.content}</p>
-                          <div className="flex items-center space-x-4 text-xs text-gray-500">
-                            <span>작성자: {inquiry.user}</span>
-                            <span>작성일: {inquiry.date}</span>
+                          <div className="flex items-center space-x-2 ml-4">
+                            <button 
+                              onClick={() => {
+                                setSelectedInquiry(inquiry);
+                                setIsInquiryDetailModalOpen(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-900 text-sm"
+                            >
+                              보기
+                            </button>
+                            {inquiry.inquiry_status === 'pending' && (
+                              <button 
+                                onClick={() => {
+                                  setSelectedInquiry(inquiry);
+                                  setIsInquiryReplyModalOpen(true);
+                                }}
+                                className="text-green-600 hover:text-green-900 text-sm"
+                              >
+                                답변
+                              </button>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex items-center space-x-2 ml-4">
-                          <button className="text-blue-600 hover:text-blue-900 text-sm">보기</button>
-                          {inquiry.status === 'pending' && (
-                            <button className="text-green-600 hover:text-green-900 text-sm">답변</button>
-                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                  ))
+                )}
+              </div>
               </div>
             </div>
           </div>
@@ -1493,6 +1562,182 @@ export default function AdminDashboard() {
                       className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       수정
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 문의사항 상세 모달 */}
+        {isInquiryDetailModalOpen && selectedInquiry && (
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-3">
+                    <h2 className="text-xl font-bold text-gray-900">문의사항 상세</h2>
+                    <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
+                      selectedInquiry.inquiry_status === 'pending' 
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {selectedInquiry.inquiry_status === 'pending' ? '답변 대기' : '답변 완료'}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setIsInquiryDetailModalOpen(false);
+                      setSelectedInquiry(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* 제목 */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">제목</h3>
+                    <div className="text-gray-700 bg-gray-50 p-4 rounded-lg">
+                      {selectedInquiry.inquiry_title}
+                    </div>
+                  </div>
+
+                  {/* 내용 */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">내용</h3>
+                    <div className="text-gray-700 bg-gray-50 p-4 rounded-lg whitespace-pre-wrap">
+                      {selectedInquiry.inquiry_content}
+                    </div>
+                  </div>
+
+                  {/* 정보 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">작성자</h3>
+                      <div className="text-gray-700">
+                        {selectedInquiry.user_name || '사용자'}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">작성일</h3>
+                      <div className="text-gray-700">
+                        {new Date(selectedInquiry.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 답변 */}
+                  {selectedInquiry.inquiry_status === 'answered' && selectedInquiry.answer && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">답변</h3>
+                      <div className="text-gray-700 bg-blue-50 p-4 rounded-lg whitespace-pre-wrap border-l-4 border-blue-500">
+                        {selectedInquiry.answer.answer_content}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-2">
+                        답변일: {new Date(selectedInquiry.answer.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 버튼 */}
+                  <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+                    <button
+                      onClick={() => {
+                        setIsInquiryDetailModalOpen(false);
+                        setSelectedInquiry(null);
+                      }}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      닫기
+                    </button>
+                    {selectedInquiry.inquiry_status === 'pending' && (
+                      <button
+                        onClick={() => {
+                          setIsInquiryDetailModalOpen(false);
+                          setIsInquiryReplyModalOpen(true);
+                        }}
+                        className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        답변하기
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 문의사항 답변 모달 */}
+        {isInquiryReplyModalOpen && selectedInquiry && (
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-gray-900">문의사항 답변</h2>
+                  <button 
+                    onClick={() => {
+                      setIsInquiryReplyModalOpen(false);
+                      setSelectedInquiry(null);
+                      setInquiryReplyForm({ reply_content: '' });
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* 문의사항 정보 */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h3 className="font-medium text-gray-900 mb-2">{selectedInquiry.inquiry_title}</h3>
+                    <p className="text-gray-600 text-sm">{selectedInquiry.inquiry_content}</p>
+                  </div>
+
+                  {/* 답변 입력 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      답변 내용 *
+                    </label>
+                    <textarea
+                      value={inquiryReplyForm.reply_content}
+                      onChange={(e) => setInquiryReplyForm(prev => ({ ...prev, reply_content: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="답변 내용을 입력하세요"
+                      rows={8}
+                    />
+                  </div>
+
+                  {/* 버튼 */}
+                  <div className="flex items-center justify-end space-x-3 pt-4">
+                    <button
+                      onClick={() => {
+                        setIsInquiryReplyModalOpen(false);
+                        setSelectedInquiry(null);
+                        setInquiryReplyForm({ reply_content: '' });
+                      }}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleInquiryReply}
+                      disabled={inquiryReplySubmitting}
+                      className={`px-4 py-2 text-white rounded-lg transition-colors ${
+                        inquiryReplySubmitting
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {inquiryReplySubmitting ? '답변 중...' : '답변 등록'}
                     </button>
                   </div>
                 </div>

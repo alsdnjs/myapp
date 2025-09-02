@@ -18,11 +18,15 @@ interface Notice {
 }
 
 interface Inquiry {
-  id: number;
-  title: string;
-  content: string;
-  date: string;
-  status: 'pending' | 'completed';
+  inquiry_id: number;
+  inquiry_title: string;
+  inquiry_content: string;
+  inquiry_status: 'pending' | 'answered';
+  created_at: string;
+  answer?: {
+    answer_content: string;
+    created_at: string;
+  };
 }
 
 const faqs: FAQ[] = [
@@ -55,22 +59,7 @@ const faqs: FAQ[] = [
 
 
 
-const inquiries: Inquiry[] = [
-  {
-    id: 1,
-    title: "칼럼 작성 관련 문의",
-    content: "칼럼 작성 시 이미지 업로드가 되지 않습니다.",
-    date: "2024.03.21",
-    status: 'completed'
-  },
-  {
-    id: 2,
-    title: "회원정보 수정 문의",
-    content: "프로필 이미지 변경이 안됩니다.",
-    date: "2024.03.20",
-    status: 'pending'
-  }
-];
+
 
 export default function CustomerService() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -82,6 +71,8 @@ export default function CustomerService() {
   const [isMounted, setIsMounted] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [noticesLoading, setNoticesLoading] = useState(true);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [inquiriesLoading, setInquiriesLoading] = useState(true);
 
   // 공지사항 목록 가져오기
   const fetchNotices = async () => {
@@ -114,7 +105,18 @@ export default function CustomerService() {
       if (response.ok) {
         const data = await response.json();
         console.log('고객센터 공지사항 목록:', data);
-        setNotices(data);
+        
+        // 중요 공지사항을 맨 위로 정렬
+        const sortedNotices = data.sort((a: Notice, b: Notice) => {
+          // 중요 공지사항이 먼저
+          if (a.is_important == 1 && b.is_important != 1) return -1;
+          if (a.is_important != 1 && b.is_important == 1) return 1;
+          
+          // 중요도가 같으면 최신순
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setNotices(sortedNotices);
       } else {
         console.error('공지사항 목록 조회 실패:', response.status, response.statusText);
         setNotices([]);
@@ -127,9 +129,50 @@ export default function CustomerService() {
     }
   };
 
+  // 문의사항 목록 가져오기
+  const fetchInquiries = async () => {
+    try {
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        console.log('로그인이 필요합니다.');
+        setInquiries([]);
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/inquiry/list`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('고객센터 문의사항 목록:', data);
+        
+        // 최신순으로 정렬
+        const sortedInquiries = data.sort((a: Inquiry, b: Inquiry) => {
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setInquiries(sortedInquiries);
+      } else {
+        console.error('문의사항 목록 조회 실패:', response.status);
+        setInquiries([]);
+      }
+    } catch (error) {
+      console.error('문의사항 목록 조회 오류:', error);
+      setInquiries([]);
+    } finally {
+      setInquiriesLoading(false);
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     fetchNotices();
+    fetchInquiries();
   }, []);
 
   const toggleFaq = (id: number) => {
@@ -144,13 +187,51 @@ export default function CustomerService() {
     setExpandedInquiry(expandedInquiry === id ? null : id);
   };
 
-  const handleInquirySubmit = (e: React.FormEvent) => {
+  const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: 실제 문의사항 제출 로직 구현
-    alert('문의사항이 접수되었습니다.');
-    setInquiryTitle('');
-    setInquiryContent('');
-    setIsInquiryModalOpen(false);
+    
+    if (!inquiryTitle.trim()) {
+      alert('제목을 입력해주세요.');
+      return;
+    }
+    if (!inquiryContent.trim()) {
+      alert('내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/inquiry/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          inquiry_title: inquiryTitle,
+          inquiry_content: inquiryContent
+        })
+      });
+
+      if (response.ok) {
+        alert('문의사항이 접수되었습니다.');
+        setInquiryTitle('');
+        setInquiryContent('');
+        setIsInquiryModalOpen(false);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(`문의사항 접수 실패: ${errorData.message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('문의사항 접수 오류:', error);
+      alert('문의사항 접수 중 오류가 발생했습니다.');
+    }
   };
 
   return (
@@ -256,45 +337,66 @@ export default function CustomerService() {
             <h2 className="text-xl font-bold text-[#e53e3e]">문의사항</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            {inquiries.map((inquiry) => (
-              <div key={inquiry.id} className="px-6 py-4">
-                <button
-                  onClick={() => toggleInquiry(inquiry.id)}
-                  className="w-full text-left"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-gray-900">{inquiry.title}</h3>
-                      <div className="flex items-center mt-1">
-                        <p className="text-sm text-gray-500 mr-4">{inquiry.date}</p>
-                        <span className={`text-sm px-2 py-1 rounded-full ${
-                          inquiry.status === 'completed' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {inquiry.status === 'completed' ? '답변완료' : '답변대기'}
-                        </span>
-                      </div>
-                    </div>
-                    <svg
-                      className={`w-5 h-5 text-gray-500 transform transition-transform duration-200 ${
-                        expandedInquiry === inquiry.id ? 'rotate-180' : ''
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </button>
-                {expandedInquiry === inquiry.id && (
-                  <div className="mt-4 text-gray-600 bg-gray-50 p-4 rounded-lg">
-                    {inquiry.content}
-                  </div>
-                )}
+            {inquiriesLoading ? (
+              <div className="px-6 py-8 text-center">
+                <div className="text-gray-500">문의사항을 불러오는 중...</div>
               </div>
-            ))}
+            ) : inquiries.length === 0 ? (
+              <div className="px-6 py-8 text-center">
+                <div className="text-gray-500">등록된 문의사항이 없습니다.</div>
+              </div>
+            ) : (
+              inquiries.map((inquiry) => (
+                <div key={inquiry.inquiry_id} className="px-6 py-4">
+                  <button
+                    onClick={() => toggleInquiry(inquiry.inquiry_id)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-medium text-gray-900">{inquiry.inquiry_title}</h3>
+                        <div className="flex items-center mt-1">
+                          <p className="text-sm text-gray-500 mr-4">{new Date(inquiry.created_at).toLocaleDateString()}</p>
+                          <span className={`text-sm px-2 py-1 rounded-full ${
+                            inquiry.inquiry_status === 'answered' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {inquiry.inquiry_status === 'answered' ? '답변완료' : '답변대기'}
+                          </span>
+                        </div>
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-gray-500 transform transition-transform duration-200 ${
+                          expandedInquiry === inquiry.inquiry_id ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+                  {expandedInquiry === inquiry.inquiry_id && (
+                    <div className="mt-4 text-gray-600 bg-gray-50 p-4 rounded-lg">
+                      <div className="whitespace-pre-wrap">{inquiry.inquiry_content}</div>
+                      {inquiry.inquiry_status === 'answered' && inquiry.answer && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h4 className="font-medium text-gray-900 mb-2">답변</h4>
+                          <div className="text-gray-600 bg-blue-50 p-3 rounded-lg whitespace-pre-wrap">
+                            {inquiry.answer.answer_content}
+                          </div>
+                          <p className="text-sm text-gray-500 mt-2">
+                            답변일: {new Date(inquiry.answer.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
           <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
             <button
