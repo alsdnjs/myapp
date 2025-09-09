@@ -158,7 +158,9 @@ export default function CustomerService() {
         
         setInquiries(sortedInquiries);
       } else {
-        console.error('문의사항 목록 조회 실패:', response.status);
+        const errorText = await response.text();
+        console.error('문의사항 목록 조회 실패:', response.status, response.statusText);
+        console.error('오류 상세:', errorText);
         setInquiries([]);
       }
     } catch (error) {
@@ -179,8 +181,53 @@ export default function CustomerService() {
     setExpandedFaq(expandedFaq === id ? null : id);
   };
 
-  const toggleNotice = (id: number) => {
-    setExpandedNotice(expandedNotice === id ? null : id);
+  const toggleNotice = async (id: number) => {
+    // 이미 열려있으면 닫기만
+    if (expandedNotice === id) {
+      setExpandedNotice(null);
+      return;
+    }
+
+    try {
+      // 공지사항 상세 조회 (조회수 증가)
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/notice/${id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const noticeDetail = await response.json();
+        console.log('공지사항 상세 조회:', noticeDetail);
+        console.log('업데이트 전 조회수:', noticeDetail.view_count);
+        
+        // 목록의 해당 공지사항 업데이트 (조회수 포함)
+        setNotices(prevNotices => {
+          const updatedNotices = prevNotices.map(notice => {
+            if (notice.notice_id === id) {
+              console.log('업데이트 중:', notice.notice_title, '기존 조회수:', notice.view_count, '새 조회수:', noticeDetail.view_count);
+              return { ...notice, view_count: noticeDetail.view_count };
+            }
+            return notice;
+          });
+          console.log('업데이트된 목록:', updatedNotices);
+          return updatedNotices;
+        });
+        
+        // 모달 열기
+        setExpandedNotice(id);
+      } else {
+        console.error('공지사항 상세 조회 실패:', response.status);
+        // 실패해도 모달은 열기
+        setExpandedNotice(id);
+      }
+    } catch (error) {
+      console.error('공지사항 상세 조회 오류:', error);
+      // 오류가 있어도 모달은 열기
+      setExpandedNotice(id);
+    }
   };
 
   const toggleInquiry = (id: number) => {
