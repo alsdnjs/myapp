@@ -6,7 +6,7 @@ import CommentModal from "@/components/CommentModal";
 import ColumnWriteModal from './ColumnWriteModal';
 import ColumnEditModal, { ColumnEditData } from './ColumnEditModal';
 import ColumnDetailModal from './ColumnDetailModal';
-import { getToken } from '@/utils/token';
+import { getToken, removeToken } from '@/utils/token';
 import { parseTitleAndContent } from '@/utils/articleStorage';
 import ImageGallery from '@/components/ImageGallery'; // 이미지 갤러리 컴포넌트 추가
 
@@ -70,6 +70,10 @@ export default function Column() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedColumnForReport, setSelectedColumnForReport] = useState<Column | null>(null);
+  const [selectedReportReason, setSelectedReportReason] = useState('');
+  const [reportAdditionalComment, setReportAdditionalComment] = useState('');
   const [editTarget, setEditTarget] = useState<ColumnEditData | null>(null);
   
   // 글쓰기 모달 상태
@@ -276,6 +280,12 @@ export default function Column() {
     e.stopPropagation();
     setOpenActionMenuId(null);
     
+    // 작성자 확인
+    if (!currentUserId || column.user_id !== currentUserId) {
+      alert('작성자만 수정할 수 있습니다.');
+      return;
+    }
+    
     // content에서 제목과 내용 분리
     const { title, content } = parseTitleAndContent(column.content);
     
@@ -294,21 +304,29 @@ export default function Column() {
     
     // 삭제할 컬럼 정보 확인
     const columnToDelete = columns.find(c => c.id === columnId);
-    if (columnToDelete) {
-      console.log('삭제할 컬럼 정보:', {
-        id: columnToDelete.id,
-        title: columnToDelete.title,
-        imageUrls: columnToDelete.imageUrls,
-        image_url: columnToDelete.image_url
-      });
-      
-      // 이미지가 포함된 컬럼인지 확인
-      if (columnToDelete.imageUrls || columnToDelete.image_url) {
-        console.log('⚠️ 이미지가 포함된 컬럼 삭제 - 백엔드에서 이미지 파일은 삭제되지 않을 수 있습니다');
-      }
+    
+    // 작성자 확인
+    if (!columnToDelete || !currentUserId || columnToDelete.user_id !== currentUserId) {
+      alert('작성자만 삭제할 수 있습니다.');
+      return;
     }
     
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+    // 삭제 확인
+    if (!confirm('정말 이 칼럼을 삭제하시겠습니까?')) {
+      return;
+    }
+    
+    console.log('삭제할 컬럼 정보:', {
+      id: columnToDelete.id,
+      title: columnToDelete.title,
+      imageUrls: columnToDelete.imageUrls,
+      image_url: columnToDelete.image_url
+    });
+    
+    // 이미지가 포함된 컬럼인지 확인
+    if (columnToDelete.imageUrls || columnToDelete.image_url) {
+      console.log('⚠️ 이미지가 포함된 컬럼 삭제 - 백엔드에서 이미지 파일은 삭제되지 않을 수 있습니다');
+    }
     
     try {
       const token = getToken();
@@ -383,33 +401,17 @@ export default function Column() {
       return;
     }
     
-    // 신고 사유 선택
-    const reportReasons = [
-      '스팸/광고성 게시글',
-      '부적절한 내용',
-      '저작권 침해',
-      '개인정보 노출',
-      '기타'
-    ];
+    // 신고 모달 열기
+    setSelectedColumnForReport(columnToReport);
+    setShowReportModal(true);
+  };
+
+  // 신고 제출 함수
+  const handleReportSubmit = async () => {
+    if (!selectedColumnForReport) return;
     
-    const selectedReason = prompt(
-      `"${columnToReport.title}" 게시글을 신고합니다.\n\n신고 사유를 선택해주세요:\n\n${reportReasons.map((reason, index) => `${index + 1}. ${reason}`).join('\n')}\n\n번호를 입력하세요 (1-5):`
-    );
-    
-    if (!selectedReason) return; // 취소
-    
-    const reasonIndex = parseInt(selectedReason) - 1;
-    if (isNaN(reasonIndex) || reasonIndex < 0 || reasonIndex >= reportReasons.length) {
-      alert('올바른 신고 사유를 선택해주세요.');
-      return;
-    }
-    
-    const reportReason = reportReasons[reasonIndex];
-    
-    // 추가 설명 입력 (선택사항)
-    const additionalComment = prompt('추가 설명이 있다면 입력해주세요 (선택사항):');
-    
-    if (!confirm(`다음 내용으로 신고하시겠습니까?\n\n게시글: ${columnToReport.title}\n신고 사유: ${reportReason}${additionalComment ? `\n추가 설명: ${additionalComment}` : ''}`)) {
+    if (!selectedReportReason) {
+      alert('신고 사유를 선택해주세요.');
       return;
     }
     
@@ -420,31 +422,64 @@ export default function Column() {
         return;
       }
       
-      // 백엔드 구현 전이므로 임시로 성공 메시지 표시
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      
       console.log('🚨 신고 정보:', {
-        columnId,
-        title: columnToReport.title,
-        reason: reportReason,
-        additionalComment,
+        columnId: selectedColumnForReport.id,
+        title: selectedColumnForReport.title,
+        reason: selectedReportReason,
+        additionalComment: reportAdditionalComment,
         reporterToken: token ? `${token.substring(0, 20)}...` : '없음'
       });
       
-      // TODO: 백엔드 API 구현 후 실제 신고 요청
-      // const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      // const resp = await fetch(`${baseUrl}/api/board/report`, {
-      //   method: 'POST',
-      //   headers: { 
-      //     Authorization: `Bearer ${token}`,
-      //     'Content-Type': 'application/json'
-      //   },
-      //   body: JSON.stringify({
-      //     board_id: columnId,
-      //     report_reason: reportReason,
-      //     additional_comment: additionalComment || ''
-      //   })
-      // });
+      // 실제 신고 API 호출
+      const response = await fetch(`${baseUrl}/api/report/user`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reported_user_id: selectedColumnForReport.user_id, // 게시글 작성자 ID
+          report_reason: selectedReportReason,
+          report_content: reportAdditionalComment || '',
+          target_type: 'board',
+          target_id: selectedColumnForReport.id,
+          target_title: selectedColumnForReport.title, // 게시글 제목
+          target_content: selectedColumnForReport.content // 게시글 내용 (일부)
+        })
+      });
       
-      alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+      console.log('🔍 API 응답 상태:', response.status, response.statusText);
+      console.log('🔍 응답 헤더:', Object.fromEntries(response.headers.entries()));
+      
+      if (response.ok) {
+        try {
+          const result = await response.json();
+          console.log('신고 접수 성공:', result);
+          alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+          
+          // 모달 닫기 및 상태 초기화
+          setShowReportModal(false);
+          setSelectedColumnForReport(null);
+          setSelectedReportReason('');
+          setReportAdditionalComment('');
+        } catch (jsonError) {
+          console.log('JSON 파싱 오류 (하지만 신고는 성공):', jsonError);
+          // JSON 파싱 오류가 있어도 신고는 성공했을 수 있음
+          alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+          
+          // 모달 닫기 및 상태 초기화
+          setShowReportModal(false);
+          setSelectedColumnForReport(null);
+          setSelectedReportReason('');
+          setReportAdditionalComment('');
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('신고 접수 실패:', response.status, errorData);
+        alert(`신고 접수에 실패했습니다: ${errorData.message || response.statusText}`);
+      }
       
     } catch (err) {
       console.error('신고 오류:', err);
@@ -468,6 +503,30 @@ export default function Column() {
         alert('로그인이 필요합니다.');
         return;
       }
+      
+      // 토큰 유효성 검사
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        alert('토큰이 유효하지 않습니다. 다시 로그인해주세요.');
+        removeToken();
+        return;
+      }
+      
+      // JWT 토큰 내용 디버깅
+      try {
+        const header = JSON.parse(atob(tokenParts[0]));
+        const payload = JSON.parse(atob(tokenParts[1]));
+        console.log('🔍 JWT 토큰 분석:', {
+          header: header,
+          payload: payload,
+          exp: payload.exp,
+          iat: payload.iat,
+          currentTime: Math.floor(Date.now() / 1000),
+          isExpired: payload.exp ? (Date.now() / 1000) > payload.exp : 'exp 없음'
+        });
+      } catch (e) {
+        console.log('❌ JWT 토큰 파싱 실패:', e);
+      }
 
       // 토큰 형식 확인
       const authHeader = `Bearer ${token}`;
@@ -478,7 +537,16 @@ export default function Column() {
       });
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      const requestUrl = `${baseUrl}/api/board/board/${columnId}/like`;
+      const requestUrl = `${baseUrl}/api/board/${columnId}/like`;
+      
+      // 백엔드 API 테스트를 위한 대안 URL들
+      const alternativeUrls = [
+        `${baseUrl}/api/board/board/${columnId}/like`,
+        `${baseUrl}/api/board/like/${columnId}`,
+        `${baseUrl}/api/like/board/${columnId}`
+      ];
+      
+      console.log('🔄 대안 API URL들:', alternativeUrls);
       
       console.log('🌐 API 요청 정보:', {
         url: requestUrl,
@@ -581,7 +649,23 @@ export default function Column() {
             console.error('📝 응답 본문 읽기 실패:', e);
           }
           
-          alert('인증이 필요합니다. 다시 로그인해주세요.');
+          console.log('🚨 백엔드 인증 문제 감지 - 임시로 프론트엔드에서만 처리');
+          
+          // 임시로 프론트엔드에서만 좋아요 상태 변경
+          const newIsLiked = !column.isLiked;
+          const newCount = newIsLiked ? column.likeCount + 1 : column.likeCount - 1;
+          
+          // 로컬 상태 업데이트
+          setColumns(prevColumns => 
+            prevColumns.map(col => 
+              col.id === columnId 
+                ? { ...col, isLiked: newIsLiked, likeCount: newCount }
+                : col
+            )
+          );
+          
+          console.log('✅ 임시 처리 완료:', { columnId, isLiked: newIsLiked, count: newCount });
+          alert('백엔드 인증 문제로 임시 처리되었습니다.\n페이지 새로고침 시 원래 상태로 돌아갑니다.');
         } else {
           alert('좋아요 처리에 실패했습니다.');
         }
@@ -683,6 +767,23 @@ export default function Column() {
 
   // 클라이언트 사이드에서만 실행되도록 useEffect 사용
   const [mounted, setMounted] = useState(false);
+  
+  // URL 파라미터 확인하여 특정 게시물 모달 열기
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const openModalId = urlParams.get('openModal');
+      if (openModalId) {
+        const columnId = parseInt(openModalId);
+        if (!isNaN(columnId)) {
+          // 해당 게시물 모달 열기
+          setSelectedColumnId(columnId);
+          setIsDetailModalOpen(true);
+        }
+      }
+    }
+  }, []);
+
   useEffect(() => {
     setMounted(true);
     
@@ -1135,13 +1236,15 @@ export default function Column() {
                           role="menu"
                           className="absolute right-4 top-12 z-20 w-36 bg-white border border-gray-200 rounded-md shadow-lg py-1"
                         >
-                          <button
-                            role="menuitem"
-                            onClick={(e) => handleEditColumn(e, column)}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          >
-                            수정
-                          </button>
+                          {currentUserId && column.user_id === currentUserId && (
+                            <button
+                              role="menuitem"
+                              onClick={(e) => handleEditColumn(e, column)}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                            >
+                              수정
+                            </button>
+                          )}
                           {currentUserId && column.user_id === currentUserId && (
                             <button
                               role="menuitem"
@@ -1404,6 +1507,95 @@ export default function Column() {
           <Sidebar />
         </div>
       </div>
+
+      {/* 신고 모달 */}
+      {showReportModal && selectedColumnForReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">게시글 신고</h3>
+              <button
+                onClick={() => {
+                  setShowReportModal(false);
+                  setSelectedColumnForReport(null);
+                  setSelectedReportReason('');
+                  setReportAdditionalComment('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">신고할 게시글</label>
+                <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                  {selectedColumnForReport.title}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">신고 사유</label>
+                <div className="space-y-2">
+                  {[
+                    '욕설/비방성 댓글',
+                    '스팸/광고성 댓글',
+                    '욕설/비방성 게시물',
+                    '부적절한 게시물',
+                    '기타'
+                  ].map((reason, index) => (
+                    <label key={index} className="flex items-center">
+                      <input
+                        type="radio"
+                        name="reportReason"
+                        value={reason}
+                        checked={selectedReportReason === reason}
+                        onChange={(e) => setSelectedReportReason(e.target.value)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">{reason}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">추가 설명 (선택사항)</label>
+                <textarea
+                  value={reportAdditionalComment}
+                  onChange={(e) => setReportAdditionalComment(e.target.value)}
+                  placeholder="신고 사유에 대한 추가 설명을 입력해주세요..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowReportModal(false);
+                    setSelectedColumnForReport(null);
+                    setSelectedReportReason('');
+                    setReportAdditionalComment('');
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleReportSubmit}
+                  className="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  신고하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

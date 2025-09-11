@@ -6,12 +6,14 @@ import LoginModal from './LoginModal';
 import SignupModal from './SignupModal';
 import Link from 'next/link';
 import { getToken, setToken, removeToken } from '@/utils/token';
+import { checkAndShowUserStatusAlert } from '@/utils/userStatus';
 
 export default function Header() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isSignupModalOpen, setIsSignupModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [user, setUser] = useState<{ name: string } | null>(null);
+  const [hasShownStatusAlert, setHasShownStatusAlert] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -19,6 +21,29 @@ export default function Header() {
     setIsMounted(true);
     
     const handleUrlToken = async () => {
+      // 정지된 계정 처리
+      const error = searchParams.get('error');
+      const reason = searchParams.get('reason');
+      const endDate = searchParams.get('endDate');
+      
+      if (error === 'account_suspended' && reason && endDate) {
+        const decodedReason = decodeURIComponent(reason);
+        const message = `🚫 계정 정지\n\n` +
+          `사유: ${decodedReason}\n` +
+          `정지 기간: ~ ${endDate}\n\n` +
+          `정지 기간 동안 로그인이 제한됩니다.\n` +
+          `정지 해제 후 다시 로그인해주세요.`;
+        
+        alert(message);
+        
+        // 토큰 삭제 및 메인 페이지로 이동
+        removeToken();
+        setUser(null);
+        setHasShownStatusAlert(false);
+        router.replace('/');
+        return;
+      }
+      
       const tokenFromUrl = searchParams.get('token');
       if (tokenFromUrl) {
         console.log("URL에서 토큰 발견:", tokenFromUrl);
@@ -72,6 +97,24 @@ export default function Header() {
         if (userData.isAuthenticated) {
           console.log("사용자 인증 성공. UI를 업데이트합니다. 사용자 이름:", userData.username);
           setUser({ name: userData.username });
+          
+          // 일반 사용자만 경고/정지 알림 표시 (관리자는 제외, 한 번만)
+          const isAdmin = userData.role === 'admin' || userData.isAdmin;
+          if (!isAdmin && !hasShownStatusAlert) {
+            console.log('🔍 일반 사용자 로그인 - 사용자 상태 확인 시작');
+            setTimeout(async () => {
+              console.log('⏰ 1초 후 사용자 상태 알림 확인 실행');
+              const alertShown = await checkAndShowUserStatusAlert();
+              console.log('📢 알림 표시 결과:', alertShown);
+              if (alertShown) {
+                setHasShownStatusAlert(true);
+              }
+            }, 1000); // 1초 후에 알림 표시 (로그인 완료 후)
+          } else if (isAdmin) {
+            console.log('👨‍💼 관리자 로그인 - 사용자 상태 확인 건너뜀');
+          } else {
+            console.log('🔕 이미 알림을 표시했거나 관리자입니다.');
+          }
         } else {
           console.log("백엔드에서 인증 실패 응답. 토큰을 삭제하고 로그아웃 처리합니다.");
           removeToken();
@@ -105,6 +148,7 @@ export default function Header() {
       if (response.status === 200 || response.status === 302) {
         setUser(null);
         removeToken();
+        setHasShownStatusAlert(false); // 로그아웃 시 알림 상태 초기화
         window.location.href = '/';
       } else {
         console.error('로그아웃 실패:', response.statusText);
@@ -113,6 +157,7 @@ export default function Header() {
       console.error('Error logging out:', error);
       setUser(null);
       removeToken();
+      setHasShownStatusAlert(false); // 로그아웃 시 알림 상태 초기화
       window.location.href = '/';
     }
   };

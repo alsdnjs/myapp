@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { getToken, isTokenValid, removeToken } from '@/utils/token';
 
 interface FAQ {
   id: number;
@@ -23,10 +24,10 @@ interface Inquiry {
   inquiry_content: string;
   inquiry_status: 'pending' | 'answered';
   created_at: string;
-  answer?: {
-    answer_content: string;
-    created_at: string;
-  };
+  // 답변 관련 필드들 (백엔드 응답 구조에 맞춤)
+  answer_content?: string;
+  answer_created_at?: string;
+  admin_username?: string;
 }
 
 const faqs: FAQ[] = [
@@ -132,24 +133,60 @@ export default function CustomerService() {
   // 문의사항 목록 가져오기
   const fetchInquiries = async () => {
     try {
-      const token = localStorage.getItem('jwt_token');
+      const token = getToken();
+      console.log('🔍 토큰 확인:', {
+        token: token ? '있음' : '없음',
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : '없음',
+        isValid: token ? isTokenValid(token) : false
+      });
+      
       if (!token) {
-        console.log('로그인이 필요합니다.');
+        console.log('토큰이 없습니다.');
         setInquiries([]);
+        setInquiriesLoading(false);
         return;
+      }
+      
+      if (!isTokenValid(token)) {
+        console.log('토큰 형식이 유효하지 않지만 API 호출을 시도합니다.');
+        // 토큰 형식이 유효하지 않아도 API 호출을 시도해보기
       }
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      const response = await fetch(`${baseUrl}/api/inquiry/list`, {
+      
+      console.log('🔍 관리자용 문의사항 목록 조회 API 호출:', {
+        url: `${baseUrl}/api/admin/inquiry/list`,
+        token: token ? '있음' : '없음',
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : '없음',
+        isValid: isTokenValid(token)
+      });
+      
+      const response = await fetch(`${baseUrl}/api/admin/inquiry/list`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
+      console.log('🔍 목록 조회 응답 상태:', response.status, response.statusText);
+
       if (response.ok) {
         const data = await response.json();
         console.log('고객센터 문의사항 목록:', data);
+        
+        // 각 문의사항의 답변 정보 확인
+        data.forEach((inquiry: any, index: number) => {
+          console.log(`🔍 문의사항 ${index + 1}:`, {
+            id: inquiry.inquiry_id,
+            title: inquiry.inquiry_title,
+            status: inquiry.inquiry_status,
+            answer_content: inquiry.answer_content,
+            answer_created_at: inquiry.answer_created_at,
+            admin_username: inquiry.admin_username
+          });
+        });
         
         // 최신순으로 정렬
         const sortedInquiries = data.sort((a: Inquiry, b: Inquiry) => {
@@ -158,6 +195,19 @@ export default function CustomerService() {
         
         setInquiries(sortedInquiries);
       } else {
+        // 401 에러인 경우 토큰 재확인
+        if (response.status === 401) {
+          console.error('🔐 인증 실패 - 토큰 확인 필요');
+          console.log('현재 토큰:', token);
+          console.log('토큰 유효성:', isTokenValid(token));
+          
+          // 토큰이 만료되었을 수 있으므로 토큰 제거
+          removeToken();
+          alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+          setInquiries([]);
+          return;
+        }
+        
         const errorText = await response.text();
         console.error('문의사항 목록 조회 실패:', response.status, response.statusText);
         console.error('오류 상세:', errorText);
@@ -230,8 +280,78 @@ export default function CustomerService() {
     }
   };
 
-  const toggleInquiry = (id: number) => {
-    setExpandedInquiry(expandedInquiry === id ? null : id);
+  const toggleInquiry = async (id: number) => {
+    // 이미 열려있으면 닫기만
+    if (expandedInquiry === id) {
+      setExpandedInquiry(null);
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+
+      // 관리자용 API를 사용하여 답변 정보를 가져오기
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      
+      console.log('🔍 관리자용 문의사항 목록에서 답변 정보 가져오기:', {
+        url: `${baseUrl}/api/admin/inquiry/list`,
+        inquiryId: id
+      });
+      
+      const listResponse = await fetch(`${baseUrl}/api/admin/inquiry/list`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        const foundInquiry = listData.find((item: any) => item.inquiry_id === id);
+        
+        if (foundInquiry) {
+          console.log('🔍 목록에서 찾은 문의사항:', foundInquiry);
+          console.log('🔍 답변 정보:', {
+            answer_content: foundInquiry.answer_content,
+            answer_created_at: foundInquiry.answer_created_at,
+            admin_username: foundInquiry.admin_username,
+            inquiry_status: foundInquiry.inquiry_status
+          });
+          
+          // 목록의 해당 문의사항 업데이트 (답변 포함)
+          setInquiries(prevInquiries => 
+            prevInquiries.map(inquiry => 
+              inquiry.inquiry_id === id 
+                ? { ...inquiry, ...foundInquiry }
+                : inquiry
+            )
+          );
+        } else {
+          console.log('목록에서 해당 문의사항을 찾을 수 없습니다.');
+        }
+      } else {
+        console.error('문의사항 목록 조회 실패:', listResponse.status, listResponse.statusText);
+        
+        // 401 에러인 경우 토큰 재확인
+        if (listResponse.status === 401) {
+          console.error('🔐 인증 실패 - 토큰 확인 필요');
+          removeToken();
+          alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+          return;
+        }
+      }
+      
+      // 모달 열기
+      setExpandedInquiry(id);
+    } catch (error) {
+      console.error('문의사항 상세 조회 오류:', error);
+      // 오류가 있어도 모달은 열기
+      setExpandedInquiry(id);
+    }
   };
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
@@ -247,7 +367,7 @@ export default function CustomerService() {
     }
 
     try {
-      const token = localStorage.getItem('jwt_token');
+      const token = getToken();
       if (!token) {
         alert('로그인이 필요합니다.');
         return;
@@ -271,7 +391,16 @@ export default function CustomerService() {
         setInquiryTitle('');
         setInquiryContent('');
         setIsInquiryModalOpen(false);
+        // 문의사항 목록 새로고침
+        fetchInquiries();
       } else {
+        // 401 에러인 경우 토큰 재확인
+        if (response.status === 401) {
+          removeToken();
+          alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+          return;
+        }
+        
         const errorData = await response.json().catch(() => ({}));
         alert(`문의사항 접수 실패: ${errorData.message || response.statusText}`);
       }
@@ -390,7 +519,7 @@ export default function CustomerService() {
               </div>
             ) : inquiries.length === 0 ? (
               <div className="px-6 py-8 text-center">
-                <div className="text-gray-500">등록된 문의사항이 없습니다.</div>
+                <div className="text-gray-500">문의하신 문의사항이 없습니다.</div>
               </div>
             ) : (
               inquiries.map((inquiry) => (
@@ -427,15 +556,41 @@ export default function CustomerService() {
                   </button>
                   {expandedInquiry === inquiry.inquiry_id && (
                     <div className="mt-4 text-gray-600 bg-gray-50 p-4 rounded-lg">
+                      {(() => { console.log('🔍 문의사항 상세 데이터:', {
+                        inquiry_id: inquiry.inquiry_id,
+                        status: inquiry.inquiry_status,
+                        answer_content: inquiry.answer_content,
+                        answer_created_at: inquiry.answer_created_at,
+                        admin_username: inquiry.admin_username,
+                        hasAnswer: !!inquiry.answer_content
+                      }); return null; })()}
                       <div className="whitespace-pre-wrap">{inquiry.inquiry_content}</div>
-                      {inquiry.inquiry_status === 'answered' && inquiry.answer && (
+                      {inquiry.inquiry_status === 'answered' && (
                         <div className="mt-4 pt-4 border-t border-gray-200">
                           <h4 className="font-medium text-gray-900 mb-2">답변</h4>
-                          <div className="text-gray-600 bg-blue-50 p-3 rounded-lg whitespace-pre-wrap">
-                            {inquiry.answer.answer_content}
-                          </div>
-                          <p className="text-sm text-gray-500 mt-2">
-                            답변일: {new Date(inquiry.answer.created_at).toLocaleDateString()}
+                          {inquiry.answer_content && inquiry.answer_content.trim() ? (
+                            <>
+                              <div className="text-gray-600 bg-blue-50 p-3 rounded-lg whitespace-pre-wrap">
+                                {inquiry.answer_content}
+                              </div>
+                              <div className="text-sm text-gray-500 mt-2 flex items-center justify-between">
+                                <span>답변일: {inquiry.answer_created_at ? new Date(inquiry.answer_created_at).toLocaleDateString() : ''}</span>
+                                {inquiry.admin_username && (
+                                  <span>답변자: {inquiry.admin_username}</span>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-gray-500 italic">
+                              답변 내용을 불러오는 중입니다...
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {inquiry.inquiry_status === 'pending' && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <p className="text-sm text-gray-500 italic">
+                            답변을 기다리고 있습니다. 빠른 시일 내에 답변드리겠습니다.
                           </p>
                         </div>
                       )}

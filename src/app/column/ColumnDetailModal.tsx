@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getToken } from '@/utils/token';
+import { getToken, removeToken } from '@/utils/token';
 import { parseTitleAndContent } from '@/utils/articleStorage';
 import ImageGallery from '@/components/ImageGallery'; // ImageGallery 컴포넌트 추가
 
@@ -45,20 +45,133 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
   
   // 현재 사용자 정보
   const [currentUser, setCurrentUser] = useState<{ id: number; username: string } | null>(null);
+  
+  // 댓글 액션 메뉴 상태
+  const [openCommentActionMenu, setOpenCommentActionMenu] = useState<number | null>(null);
+  
+  // 신고 관련 상태
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedTargetForReport, setSelectedTargetForReport] = useState<{
+    type: 'board' | 'comment';
+    id: number;
+    title?: string;
+    content?: string;
+    userId?: number;
+  } | null>(null);
+  const [selectedReportReason, setSelectedReportReason] = useState('');
+  const [reportAdditionalComment, setReportAdditionalComment] = useState('');
+
+  // 액션 메뉴 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.action-menu')) {
+        setOpenCommentActionMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // 좋아요 상태 확인 함수
+  const fetchLikeStatus = async (boardId: number) => {
+    try {
+      const token = getToken();
+      if (!token) {
+        console.log('💖 토큰이 없어서 좋아요 상태를 가져올 수 없습니다.');
+        return null;
+      }
+      
+      // 토큰 유효성 검사
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        console.log('💖 토큰 형식이 올바르지 않습니다.');
+        return null;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      const response = await fetch(`${baseUrl}/api/board/${boardId}/like-status`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('💖 좋아요 상태 확인:', data);
+        return data;
+      } else {
+        console.log('좋아요 상태 확인 실패:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('좋아요 상태 확인 오류:', error);
+      return null;
+    }
+  };
 
   // 좋아요 토글 함수
   const handleLikeToggle = async () => {
-    if (!column) return;
+    if (!column) {
+      console.error('❌ column이 없습니다.');
+      return;
+    }
     
     try {
       const token = getToken();
+      console.log('🔍 좋아요 토글 디버깅:', {
+        columnId: column.id,
+        columnTitle: column.title,
+        hasToken: !!token,
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : '없음'
+      });
+      
       if (!token) {
         alert('로그인이 필요합니다.');
         return;
       }
+      
+      // 토큰 유효성 검사
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        alert('토큰이 유효하지 않습니다. 다시 로그인해주세요.');
+        removeToken();
+        return;
+      }
+      
+      // JWT 토큰 내용 디버깅
+      try {
+        const header = JSON.parse(atob(tokenParts[0]));
+        const payload = JSON.parse(atob(tokenParts[1]));
+        console.log('🔍 JWT 토큰 분석:', {
+          header: header,
+          payload: payload,
+          exp: payload.exp,
+          iat: payload.iat,
+          currentTime: Math.floor(Date.now() / 1000),
+          isExpired: payload.exp ? (Date.now() / 1000) > payload.exp : 'exp 없음'
+        });
+      } catch (e) {
+        console.log('❌ JWT 토큰 파싱 실패:', e);
+      }
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      const requestUrl = `${baseUrl}/api/board/board/${column.id}/like`;
+      const requestUrl = `${baseUrl}/api/board/${column.id}/like`;
+      
+      console.log('🌐 API 요청 정보:', {
+        url: requestUrl,
+        method: 'POST',
+        columnId: column.id,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        }
+      });
       
       const resp = await fetch(requestUrl, {
         method: 'POST',
@@ -67,8 +180,13 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         },
       });
 
+      console.log('📡 응답 상태:', resp.status, resp.statusText);
+      console.log('📡 응답 헤더:', Object.fromEntries(resp.headers.entries()));
+
       if (resp.ok) {
         const data = await resp.json();
+        console.log('📡 응답 데이터:', data);
+        
         const newIsLiked = data.isLiked;
         const newCount = data.likeCount || data.like_count || data.likes || 0;
 
@@ -87,8 +205,37 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
 
         console.log('✅ 좋아요 토글 성공:', { columnId: column.id, isLiked: newIsLiked, count: newCount });
       } else {
-        console.error('❌ 좋아요 토글 실패:', resp.status);
-        alert('좋아요 처리에 실패했습니다.');
+        const responseText = await resp.text();
+        console.error('❌ 좋아요 토글 실패:', {
+          status: resp.status,
+          statusText: resp.statusText,
+          responseText: responseText
+        });
+        
+        if (resp.status === 401) {
+          console.log('🚨 백엔드 인증 문제 감지 - 임시로 프론트엔드에서만 처리');
+          
+          // 임시로 프론트엔드에서만 좋아요 상태 변경
+          const newIsLiked = !column.isLiked;
+          const newCount = newIsLiked ? column.likeCount + 1 : column.likeCount - 1;
+          
+          // 로컬 상태 업데이트
+          setColumn(prevColumn => ({
+            ...prevColumn,
+            isLiked: newIsLiked,
+            likeCount: newCount
+          }));
+          
+          // 부모 컴포넌트에 알림
+          if (onLikeChange) {
+            onLikeChange(column.id, newIsLiked, newCount);
+          }
+          
+          console.log('✅ 임시 처리 완료:', { columnId: column.id, isLiked: newIsLiked, count: newCount });
+          alert('백엔드 인증 문제로 임시 처리되었습니다.\n페이지 새로고침 시 원래 상태로 돌아갑니다.');
+        } else {
+          alert(`좋아요 처리에 실패했습니다.\n상태: ${resp.status}\n메시지: ${responseText}`);
+        }
       }
     } catch (error) {
       console.error('💥 좋아요 토글 오류:', error);
@@ -96,40 +243,38 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
     }
   };
 
-  // 신고하기 함수
-  const handleReportColumn = async () => {
-    if (!column) {
-      alert('게시글을 찾을 수 없습니다.');
-      return;
-    }
+  // 게시물 신고하기 함수
+  const handleReportBoard = () => {
+    if (!column) return;
     
-    // 신고 사유 선택
-    const reportReasons = [
-      '스팸/광고성 게시글',
-      '부적절한 내용',
-      '저작권 침해',
-      '개인정보 노출',
-      '기타'
-    ];
+    setSelectedTargetForReport({
+      type: 'board',
+      id: column.id,
+      title: column.title,
+      content: column.content,
+      userId: column.user_id
+    });
+    setShowReportModal(true);
+  };
+
+  // 댓글 신고하기 함수
+  const handleReportComment = (commentId: number, commentContent: string, userId: number) => {
+    setSelectedTargetForReport({
+      type: 'comment',
+      id: commentId,
+      content: commentContent,
+      userId: userId
+    });
+    setShowReportModal(true);
+    setOpenCommentActionMenu(null);
+  };
+
+  // 신고 제출 함수
+  const handleReportSubmit = async () => {
+    if (!selectedTargetForReport) return;
     
-    const selectedReason = prompt(
-      `"${column.title}" 게시글을 신고합니다.\n\n신고 사유를 선택해주세요:\n\n${reportReasons.map((reason, index) => `${index + 1}. ${reason}`).join('\n')}\n\n번호를 입력하세요 (1-5):`
-    );
-    
-    if (!selectedReason) return; // 취소
-    
-    const reasonIndex = parseInt(selectedReason) - 1;
-    if (isNaN(reasonIndex) || reasonIndex < 0 || reasonIndex >= reportReasons.length) {
-      alert('올바른 신고 사유를 선택해주세요.');
-      return;
-    }
-    
-    const reportReason = reportReasons[reasonIndex];
-    
-    // 추가 설명 입력 (선택사항)
-    const additionalComment = prompt('추가 설명이 있다면 입력해주세요 (선택사항):');
-    
-    if (!confirm(`다음 내용으로 신고하시겠습니까?\n\n게시글: ${column.title}\n신고 사유: ${reportReason}${additionalComment ? `\n추가 설명: ${additionalComment}` : ''}`)) {
+    if (!selectedReportReason) {
+      alert('신고 사유를 선택해주세요.');
       return;
     }
     
@@ -140,37 +285,72 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         return;
       }
       
-      // 백엔드 구현 전이므로 임시로 성공 메시지 표시
-      console.log('🚨 상세페이지 신고 정보:', {
-        columnId: column.id,
-        title: column.title,
-        reason: reportReason,
-        additionalComment,
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
+      
+      console.log('🚨 신고 정보:', {
+        targetType: selectedTargetForReport.type,
+        targetId: selectedTargetForReport.id,
+        reason: selectedReportReason,
+        additionalComment: reportAdditionalComment,
         reporterToken: token ? `${token.substring(0, 20)}...` : '없음'
       });
       
-      // TODO: 백엔드 API 구현 후 실제 신고 요청
-      // const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      // const resp = await fetch(`${baseUrl}/api/board/report`, {
-      //   method: 'POST',
-      //   headers: { 
-      //     Authorization: `Bearer ${token}`,
-      //     'Content-Type': 'application/json'
-      //   },
-      //   body: JSON.stringify({
-      //     board_id: column.id,
-      //     report_reason: reportReason,
-      //     additional_comment: additionalComment || ''
-      //   })
-      // });
+      // 실제 신고 API 호출
+      const response = await fetch(`${baseUrl}/api/report/user`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reported_user_id: selectedTargetForReport.userId,
+          report_reason: selectedReportReason,
+          report_content: reportAdditionalComment || '',
+          target_type: selectedTargetForReport.type === 'board' ? 'board' : 'board_comment',
+          target_id: selectedTargetForReport.type === 'board' ? selectedTargetForReport.id : columnId, // 게시물인 경우 게시물 ID, 댓글인 경우 게시물 ID
+          comment_id: selectedTargetForReport.type === 'comment' ? selectedTargetForReport.id : null, // 댓글인 경우 댓글 ID
+          target_title: selectedTargetForReport.title || selectedTargetForReport.content, // 게시글 제목 또는 댓글 내용
+          target_content: selectedTargetForReport.content // 게시글/댓글 내용
+        })
+      });
       
-      alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+      console.log('🔍 API 응답 상태:', response.status, response.statusText);
+      console.log('🔍 응답 헤더:', Object.fromEntries(response.headers.entries()));
+      
+      if (response.ok) {
+        try {
+          const result = await response.json();
+          console.log('신고 접수 성공:', result);
+          alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+          
+          // 모달 닫기 및 상태 초기화
+          setShowReportModal(false);
+          setSelectedTargetForReport(null);
+          setSelectedReportReason('');
+          setReportAdditionalComment('');
+        } catch (jsonError) {
+          console.log('JSON 파싱 오류 (하지만 신고는 성공):', jsonError);
+          // JSON 파싱 오류가 있어도 신고는 성공했을 수 있음
+          alert('신고가 접수되었습니다. 검토 후 처리하겠습니다.');
+          
+          // 모달 닫기 및 상태 초기화
+          setShowReportModal(false);
+          setSelectedTargetForReport(null);
+          setSelectedReportReason('');
+          setReportAdditionalComment('');
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('신고 접수 실패:', response.status, errorData);
+        alert(`신고 접수에 실패했습니다: ${errorData.message || response.statusText}`);
+      }
       
     } catch (err) {
       console.error('신고 오류:', err);
       alert('신고 처리 중 오류가 발생했습니다.');
     }
   };
+
 
   // 댓글 수정 함수
   const handleCommentEdit = async (commentId: number) => {
@@ -671,37 +851,92 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
       console.log('API 응답 상태:', detailResponse.status);
 
       if (detailResponse.ok) {
-        const data = await detailResponse.json();
+        let data;
+        try {
+          const responseText = await detailResponse.text();
+          console.log('API 응답 텍스트:', responseText);
+          data = responseText ? JSON.parse(responseText) : {};
+        } catch (jsonError) {
+          console.error('JSON 파싱 오류:', jsonError);
+          console.log('응답 상태:', detailResponse.status);
+          console.log('응답 헤더:', detailResponse.headers);
+          throw new Error('서버 응답을 파싱할 수 없습니다.');
+        }
         console.log('글 상세 정보:', data);
+        console.log('board_content:', data.board_content);
+        console.log('content:', data.content);
+        console.log('title:', data.title);
+        console.log('board_title:', data.board_title);
         
         // 제목과 내용을 파싱
-        const { title, content } = parseTitleAndContent(data.board_content || data.content || '');
+        let title, content;
         
-        // 임시 해결책: 전체목록에서 좋아요 상태 가져오기
+        // 1. 먼저 직접 title 필드가 있는지 확인
+        if (data.title || data.board_title) {
+          title = data.title || data.board_title;
+          content = data.board_content || data.content || '';
+        } 
+        // 2. board_content에서 [제목] 형식으로 파싱 시도
+        else if (data.board_content && data.board_content.includes('[') && data.board_content.includes(']')) {
+          const parsed = parseTitleAndContent(data.board_content);
+          title = parsed.title;
+          content = parsed.content;
+        }
+        // 3. content에서 [제목] 형식으로 파싱 시도
+        else if (data.content && data.content.includes('[') && data.content.includes(']')) {
+          const parsed = parseTitleAndContent(data.content);
+          title = parsed.title;
+          content = parsed.content;
+        }
+        // 4. 모든 방법이 실패하면 기본값 사용
+        else {
+          const fullContent = data.board_content || data.content || '';
+          title = fullContent.length > 50 ? fullContent.substring(0, 50) + '...' : fullContent || '제목 없음';
+          content = fullContent;
+        }
+        
+        console.log('파싱된 제목:', title);
+        console.log('파싱된 내용:', content);
+        
+        // 좋아요 상태 확인
         let isLiked = false;
         if (token) {
-          try {
-            const listResponse = await fetch(`${baseUrl}/api/board/board/authenticated`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-            
-            if (listResponse.ok) {
-              const listData = await listResponse.json();
-              const columnFromList = listData.find((item: any) => 
-                (item.board_id || item.id) === columnId
-              );
+          const likeStatus = await fetchLikeStatus(columnId);
+          if (likeStatus) {
+            isLiked = likeStatus.isLiked || likeStatus.is_liked || false;
+            console.log('💖 좋아요 상태 API에서 가져옴:', isLiked);
+          } else {
+            // 좋아요 상태 API 실패 시 전체목록에서 가져오기 (fallback)
+            try {
+              const listResponse = await fetch(`${baseUrl}/api/board/board/authenticated`, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
               
-              if (columnFromList) {
-                isLiked = columnFromList.is_liked || columnFromList.isLiked || false;
-                console.log('📋 전체목록에서 좋아요 상태 가져옴:', isLiked);
+              if (listResponse.ok) {
+                let listData;
+                try {
+                  const responseText = await listResponse.text();
+                  listData = responseText ? JSON.parse(responseText) : [];
+                } catch (jsonError) {
+                  console.error('전체목록 JSON 파싱 오류:', jsonError);
+                  listData = [];
+                }
+                const columnFromList = listData.find((item: any) => 
+                  (item.board_id || item.id) === columnId
+                );
+                
+                if (columnFromList) {
+                  isLiked = columnFromList.is_liked || columnFromList.isLiked || false;
+                  console.log('📋 전체목록에서 좋아요 상태 가져옴 (fallback):', isLiked);
+                }
               }
+            } catch (error) {
+              console.log('전체목록에서 좋아요 상태 가져오기 실패:', error);
             }
-          } catch (error) {
-            console.log('전체목록에서 좋아요 상태 가져오기 실패:', error);
           }
         }
         
@@ -718,7 +953,15 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
           console.log('📡 댓글 API 응답 상태:', commentsResponse.status);
           
           if (commentsResponse.ok) {
-            const comments = await commentsResponse.json();
+            let comments;
+            try {
+              const responseText = await commentsResponse.text();
+              console.log('댓글 API 응답 텍스트:', responseText);
+              comments = responseText ? JSON.parse(responseText) : [];
+            } catch (jsonError) {
+              console.error('댓글 JSON 파싱 오류:', jsonError);
+              comments = [];
+            }
             console.log('📝 댓글 목록 로드 성공:', comments);
             console.log('📝 댓글 개수:', comments.length);
             console.log('📝 댓글 데이터 구조:', comments[0] ? Object.keys(comments[0]) : '댓글 없음');
@@ -734,7 +977,14 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                       // 인증 헤더 제거 - 모든 사용자가 대댓글을 볼 수 있음
                     });
                     if (repliesResponse.ok) {
-                      const replies = await repliesResponse.json();
+                      let replies;
+                      try {
+                        const responseText = await repliesResponse.text();
+                        replies = responseText ? JSON.parse(responseText) : [];
+                      } catch (jsonError) {
+                        console.error('대댓글 JSON 파싱 오류:', jsonError);
+                        replies = [];
+                      }
                       return { ...comment, replies };
                     }
                   } catch (error) {
@@ -753,9 +1003,22 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
           console.error('댓글 목록 로드 실패:', error);
         }
         
+        // 최종 제목 검증 및 개선
+        let finalTitle = title;
+        if (!finalTitle || finalTitle === '제목 없음' || finalTitle.trim() === '') {
+          // 제목이 없으면 내용의 첫 부분을 제목으로 사용
+          const firstLine = content.split('\n')[0] || content;
+          finalTitle = firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+          if (!finalTitle || finalTitle.trim() === '') {
+            finalTitle = `게시물 ${data.board_id || data.id || columnId}`;
+          }
+        }
+        
+        console.log('최종 제목:', finalTitle);
+        
         const columnDetail: ColumnDetail = {
           id: data.board_id || data.id,
-          title: title || '제목 없음',
+          title: finalTitle,
           author: data.username || data.author || '작성자',
           date: data.uploaded_at || data.date || '2024.03.21',
           views: data.view || data.views || 0,
@@ -854,7 +1117,18 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
               </button>
             </div>
 
-            <h1 className="text-xl font-semibold mt-4 mb-2">{loading ? '불러오는 중...' : (column?.title ?? '제목')}</h1>
+            <div className="flex items-center justify-between mt-4 mb-2">
+              <h1 className="text-xl font-semibold">{loading ? '불러오는 중...' : (column?.title ?? '제목')}</h1>
+              <button
+                onClick={handleReportBoard}
+                className="text-gray-400 hover:text-red-500 transition-colors p-2"
+                title="게시글 신고하기"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </button>
+            </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-6">
@@ -909,7 +1183,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
               
               {/* 신고하기 버튼 */}
               <button 
-                onClick={handleReportColumn}
+                onClick={handleReportBoard}
                 className="flex items-center space-x-2 px-3 py-1.5 text-sm text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -986,21 +1260,56 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                             </span>
                           </div>
                           
-                          {/* 액션 버튼 (작성자에게만 표시) */}
-                          {!editingCommentId && currentUser && currentUser.id === comment.user_id && (
-                            <div className="flex items-center space-x-2">
+                          {/* 액션 메뉴 버튼 */}
+                          {!editingCommentId && (
+                            <div className="relative action-menu">
                               <button
-                                onClick={() => handleCommentEditStart(comment)}
-                                className="text-sm text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded hover:bg-blue-50"
+                                onClick={() => setOpenCommentActionMenu(openCommentActionMenu === comment.comment_id ? null : comment.comment_id)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
                               >
-                                수정
+                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                                </svg>
                               </button>
-                              <button
-                                onClick={() => handleCommentDelete(comment.comment_id)}
-                                className="text-sm text-red-600 hover:text-red-800 transition-colors px-2 py-1 rounded hover:bg-red-50"
-                              >
-                                삭제
-                              </button>
+                              
+                              {/* 액션 메뉴 드롭다운 */}
+                              {openCommentActionMenu === comment.comment_id && (
+                                <div className="absolute right-0 top-8 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                                  {/* 작성자에게만 수정/삭제 표시 */}
+                                  {currentUser && currentUser.id === comment.user_id && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          handleCommentEditStart(comment);
+                                          setOpenCommentActionMenu(null);
+                                        }}
+                                        className="w-full text-left px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                                      >
+                                        수정
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          handleCommentDelete(comment.comment_id);
+                                          setOpenCommentActionMenu(null);
+                                        }}
+                                        className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                      >
+                                        삭제
+                                      </button>
+                                    </>
+                                  )}
+                                  
+                                  {/* 모든 사용자에게 신고하기 표시 */}
+                                  <button
+                                    onClick={() => {
+                                      handleReportComment(comment.comment_id, comment.comment_content, comment.user_id);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-sm text-orange-600 hover:bg-orange-50 transition-colors"
+                                  >
+                                    신고하기
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1115,23 +1424,56 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                                     </span>
                                   </div>
                                   
-                                  {/* 대댓글 액션 버튼 (작성자에게만 표시) */}
-                                  {currentUser && currentUser.id === reply.user_id && (
-                                    <div className="flex items-center space-x-2">
-                                      <button
-                                        onClick={() => handleCommentEditStart(reply)}
-                                        className="text-xs text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded hover:bg-blue-50"
-                                      >
-                                        수정
-                                      </button>
-                                      <button
-                                        onClick={() => handleReplyDelete(reply.comment_id)}
-                                        className="text-xs text-red-600 hover:text-red-800 transition-colors px-2 py-1 rounded hover:bg-red-50"
-                                      >
-                                        삭제
-                                      </button>
-                                    </div>
-                                  )}
+                                  {/* 대댓글 액션 메뉴 버튼 */}
+                                  <div className="relative action-menu">
+                                    <button
+                                      onClick={() => setOpenCommentActionMenu(openCommentActionMenu === reply.comment_id ? null : reply.comment_id)}
+                                      className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
+                                    >
+                                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                                      </svg>
+                                    </button>
+                                    
+                                    {/* 대댓글 액션 메뉴 드롭다운 */}
+                                    {openCommentActionMenu === reply.comment_id && (
+                                      <div className="absolute right-0 top-6 w-28 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                                        {/* 작성자에게만 수정/삭제 표시 */}
+                                        {currentUser && currentUser.id === reply.user_id && (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                handleCommentEditStart(reply);
+                                                setOpenCommentActionMenu(null);
+                                              }}
+                                              className="w-full text-left px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+                                            >
+                                              수정
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                handleReplyDelete(reply.comment_id);
+                                                setOpenCommentActionMenu(null);
+                                              }}
+                                              className="w-full text-left px-2 py-1 text-xs text-red-600 hover:bg-red-50 transition-colors"
+                                            >
+                                              삭제
+                                            </button>
+                                          </>
+                                        )}
+                                        
+                                        {/* 모든 사용자에게 신고하기 표시 */}
+                                        <button
+                                          onClick={() => {
+                                            handleReportComment(reply.comment_id, reply.comment_content, reply.user_id);
+                                          }}
+                                          className="w-full text-left px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 transition-colors"
+                                        >
+                                          신고하기
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 
                                 {/* 대댓글 내용 (수정 모드 또는 일반 모드) */}
@@ -1189,6 +1531,101 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
           </div>
         </div>
       </div>
+
+      {/* 신고 모달 */}
+      {showReportModal && selectedTargetForReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {selectedTargetForReport.type === 'board' ? '게시글 신고' : '댓글 신고'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowReportModal(false);
+                  setSelectedTargetForReport(null);
+                  setSelectedReportReason('');
+                  setReportAdditionalComment('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {selectedTargetForReport.type === 'board' ? '신고할 게시글' : '신고할 댓글'}
+                </label>
+                <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                  {selectedTargetForReport.type === 'board' 
+                    ? selectedTargetForReport.title 
+                    : selectedTargetForReport.content}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">신고 사유</label>
+                <div className="space-y-2">
+                  {[
+                    '욕설/비방성 댓글',
+                    '스팸/광고성 댓글',
+                    '욕설/비방성 게시물',
+                    '부적절한 게시물',
+                    '기타'
+                  ].map((reason, index) => (
+                    <label key={index} className="flex items-center">
+                      <input
+                        type="radio"
+                        name="reportReason"
+                        value={reason}
+                        checked={selectedReportReason === reason}
+                        onChange={(e) => setSelectedReportReason(e.target.value)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">{reason}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">추가 설명 (선택사항)</label>
+                <textarea
+                  value={reportAdditionalComment}
+                  onChange={(e) => setReportAdditionalComment(e.target.value)}
+                  placeholder="신고 사유에 대한 추가 설명을 입력해주세요..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowReportModal(false);
+                    setSelectedTargetForReport(null);
+                    setSelectedReportReason('');
+                    setReportAdditionalComment('');
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleReportSubmit}
+                  className="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  신고하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
