@@ -537,7 +537,7 @@ export default function Column() {
       });
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      const requestUrl = `${baseUrl}/api/board/${columnId}/like`;
+      const requestUrl = `${baseUrl}/api/board/board/${columnId}/like`;
       
       // 백엔드 API 테스트를 위한 대안 URL들
       const alternativeUrls = [
@@ -565,6 +565,7 @@ export default function Column() {
         method: 'POST',
         headers: {
           'Authorization': authHeader,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -584,7 +585,7 @@ export default function Column() {
         });
         
         const newIsLiked = data.isLiked;
-        const newCount = data.likeCount || data.like_count || data.likes || 0;
+        const newCount = data.likeCount || 0;
         
         console.log('🎯 파싱된 값:', {
           newIsLiked,
@@ -652,14 +653,17 @@ export default function Column() {
           console.log('🚨 백엔드 인증 문제 감지 - 임시로 프론트엔드에서만 처리');
           
           // 임시로 프론트엔드에서만 좋아요 상태 변경
-          const newIsLiked = !column.isLiked;
-          const newCount = newIsLiked ? column.likeCount + 1 : column.likeCount - 1;
+          const currentColumn = columns.find(c => c.id === columnId);
+          if (!currentColumn) return;
+          
+          const newIsLiked = !currentColumn.isLiked;
+          const newCount = newIsLiked ? currentColumn.likes + 1 : currentColumn.likes - 1;
           
           // 로컬 상태 업데이트
           setColumns(prevColumns => 
             prevColumns.map(col => 
               col.id === columnId 
-                ? { ...col, isLiked: newIsLiked, likeCount: newCount }
+                ? { ...col, isLiked: newIsLiked, likes: newCount }
                 : col
             )
           );
@@ -667,7 +671,15 @@ export default function Column() {
           console.log('✅ 임시 처리 완료:', { columnId, isLiked: newIsLiked, count: newCount });
           alert('백엔드 인증 문제로 임시 처리되었습니다.\n페이지 새로고침 시 원래 상태로 돌아갑니다.');
         } else {
-          alert('좋아요 처리에 실패했습니다.');
+          // 400 오류 상세 정보 확인
+          try {
+            const errorText = await resp.text();
+            console.error('📝 400 오류 응답 본문:', errorText);
+            alert(`좋아요 처리에 실패했습니다: ${errorText}`);
+          } catch (e) {
+            console.error('📝 응답 본문 읽기 실패:', e);
+            alert('좋아요 처리에 실패했습니다.');
+          }
         }
       }
     } catch (error) {

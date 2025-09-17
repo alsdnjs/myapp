@@ -162,7 +162,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
       }
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
-      const requestUrl = `${baseUrl}/api/board/${column.id}/like`;
+      const requestUrl = `${baseUrl}/api/board/board/${column.id}/like`;
       
       console.log('🌐 API 요청 정보:', {
         url: requestUrl,
@@ -177,6 +177,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -211,6 +212,18 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
           statusText: resp.statusText,
           responseText: responseText
         });
+        
+        // 400 오류 상세 정보 표시
+        if (resp.status === 400) {
+          try {
+            const errorData = JSON.parse(responseText);
+            console.error('📝 400 오류 상세:', errorData);
+            alert(`좋아요 처리에 실패했습니다: ${errorData.error || responseText}`);
+          } catch (e) {
+            console.error('📝 400 오류 응답 파싱 실패:', e);
+            alert(`좋아요 처리에 실패했습니다: ${responseText}`);
+          }
+        }
         
         if (resp.status === 401) {
           console.log('🚨 백엔드 인증 문제 감지 - 임시로 프론트엔드에서만 처리');
