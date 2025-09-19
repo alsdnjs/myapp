@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { getToken, removeToken } from '@/utils/token';
 import { parseTitleAndContent } from '@/utils/articleStorage';
-import ImageGallery from '@/components/ImageGallery'; // ImageGallery 컴포넌트 추가
+import ImageGallery from '@/components/ImageGallery';
 
 interface ColumnDetail {
   id: number;
@@ -807,15 +807,22 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
 
   // 이미지 URL 변환 함수
   const transformImageUrl = (imageUrl: string): string => {
+    console.log('🖼️ 원본 이미지 URL:', imageUrl);
+    
     if (imageUrl.startsWith('/upload/')) {
       // /upload/파일명.png → /api/board/image/파일명.png
       const filename = imageUrl.replace('/upload/', '');
-      return `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}/api/board/image/${filename}`;
+      const transformedUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}/api/board/image/${filename}`;
+      console.log('🖼️ 변환된 이미지 URL:', transformedUrl);
+      return transformedUrl;
     } else if (!imageUrl.startsWith('http')) {
       // 상대 경로인 경우
-      return `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}${imageUrl}`;
+      const transformedUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080'}${imageUrl}`;
+      console.log('🖼️ 상대 경로 변환된 URL:', transformedUrl);
+      return transformedUrl;
     } else {
       // 이미 전체 URL인 경우
+      console.log('🖼️ 전체 URL 그대로 사용:', imageUrl);
       return imageUrl;
     }
   };
@@ -1089,9 +1096,11 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
       <div className={`bg-white/95 rounded-lg w-full max-w-7xl h-[90vh] flex overflow-hidden transform transition-all duration-500 ease-in-out ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
         {/* 왼쪽: 이미지 섹션 */}
-        <div className="w-1/2 h-full bg-gray-100 rounded-l-lg overflow-hidden"> {/* w-3/4에서 w-1/2로 변경 */}
+        <div className="w-1/2 h-full bg-gray-100 rounded-l-lg overflow-hidden flex items-center justify-center"> {/* 가운데 정렬을 위한 flex 추가 */}
           {(column?.imageUrls || column?.image_url) ? (
-            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="large" />
+            <div className="w-full h-full flex items-center justify-center">
+              <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="large" />
+            </div>
           ) : (
             <div className="w-full h-full bg-black flex items-center justify-center">
               <div className="text-white text-center">

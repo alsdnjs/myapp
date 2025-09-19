@@ -7,7 +7,6 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  Shield,
   Eye,
   X
 } from 'lucide-react';
@@ -196,7 +195,7 @@ export default function ReportsPage() {
       <h2 className="text-2xl font-bold text-gray-900">신고내역</h2>
       
       {/* 신고 통계 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="flex items-center">
             <AlertCircle className="h-8 w-8 text-red-500" />
@@ -226,18 +225,6 @@ export default function ReportsPage() {
               <p className="text-sm font-medium text-gray-500">처리 완료</p>
               <p className="text-2xl font-bold text-gray-900">
                 {reports.filter(r => r.report_status === 'warning' || r.report_status === 'suspended' || r.report_status === 'rejected').length}
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg shadow">
-          <div className="flex items-center">
-            <Shield className="h-8 w-8 text-blue-500" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">정지된 계정</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {reports.filter(r => r.report_status === 'suspended').length}
               </p>
             </div>
           </div>
@@ -320,7 +307,7 @@ export default function ReportsPage() {
                             onClick={() => handleOpenSanctionModal(report)}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                           >
-                            <Shield className="h-3 w-3 mr-1" />
+                            <AlertCircle className="h-3 w-3 mr-1" />
                             제재
                           </button>
                           <button 

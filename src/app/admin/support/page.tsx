@@ -502,7 +502,15 @@ export default function SupportPage() {
                 <div className="text-gray-500">등록된 문의사항이 없습니다.</div>
               </div>
             ) : (
-              inquiries.slice(0, 4).map((inquiry) => (
+              inquiries
+                .sort((a, b) => {
+                  // 답변 대기(pending)인 것들을 먼저 정렬
+                  if (a.inquiry_status === 'pending' && b.inquiry_status !== 'pending') return -1;
+                  if (a.inquiry_status !== 'pending' && b.inquiry_status === 'pending') return 1;
+                  // 같은 상태라면 최신순으로 정렬
+                  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                })
+                .slice(0, 4).map((inquiry) => (
                 <div key={inquiry.inquiry_id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">

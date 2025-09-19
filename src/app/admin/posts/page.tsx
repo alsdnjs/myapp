@@ -8,7 +8,6 @@ import {
   Eye,
   Heart,
   MessageCircle,
-  AlertCircle,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -155,7 +154,7 @@ export default function PostsPage() {
       </div>
 
       {/* 통계 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center">
             <div className="p-3 bg-blue-100 rounded-lg">
@@ -167,20 +166,6 @@ export default function PostsPage() {
                 {postsLoading ? '...' : posts.length}
               </p>
               <p className="text-sm text-gray-500 mt-1">총 게시물 수</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-red-100 rounded-lg">
-              <AlertCircle className="w-6 h-6 text-red-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">신고된 게시물</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {postsLoading ? '...' : posts.filter(post => post.isReported).length}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">처리 대기 중</p>
             </div>
           </div>
         </div>
@@ -218,11 +203,6 @@ export default function PostsPage() {
                     <h4 className="text-sm font-medium text-gray-900">{post.title}</h4>
                     <div className="flex items-center space-x-2">
                       <p className="text-sm text-gray-500">작성자: {post.username}</p>
-                      {post.isReported && (
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                          신고됨
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>

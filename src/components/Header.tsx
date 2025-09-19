@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import LoginModal from './LoginModal';
 import SignupModal from './SignupModal';
+import NotificationDropdown from './NotificationDropdown';
 import Link from 'next/link';
 import { getToken, setToken, removeToken } from '@/utils/token';
 import { checkAndShowUserStatusAlert } from '@/utils/userStatus';
@@ -173,6 +174,7 @@ export default function Header() {
                   <div className="text-sm text-gray-700">
                     <span className="font-medium">{user.name}</span>님 환영합니다
                   </div>
+                  <NotificationDropdown />
                   <button
                     onClick={handleLogout}
                     className="text-sm text-gray-700 hover:text-[#e53e3e] flex items-center"
