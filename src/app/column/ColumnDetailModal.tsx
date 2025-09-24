@@ -1094,11 +1094,11 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
-      <div className={`bg-white/95 rounded-lg w-full max-w-7xl h-[90vh] flex overflow-hidden transform transition-all duration-500 ease-in-out ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
+      <div className={`bg-white/95 w-full max-w-7xl h-[90vh] flex overflow-hidden transform transition-all duration-500 ease-in-out ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
         {/* 왼쪽: 이미지 섹션 */}
-        <div className="w-1/2 h-full bg-gray-100 rounded-l-lg overflow-hidden flex items-center justify-center"> {/* 가운데 정렬을 위한 flex 추가 */}
+        <div className="w-1/2 h-full overflow-hidden" style={{ position: 'relative' }}>
           {(column?.imageUrls || column?.image_url) ? (
-            <div className="w-full h-full flex items-center justify-center">
+            <div className="w-full h-full" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
               <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="large" />
             </div>
           ) : (
@@ -1114,7 +1114,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         </div>
 
         {/* 오른쪽: 상세 섹션 */}
-        <div className="w-1/2 flex flex-col"> {/* w-1/4에서 w-1/2로 변경 */}
+        <div className="w-1/2 flex flex-col rounded-r-lg overflow-hidden bg-white"> {/* w-1/4에서 w-1/2로 변경 */}
           {/* 작성자/닫기/제목/통계 - 댓글 모달 상단과 유사 */}
           <div className="border-b border-gray-200 p-4">
             <div className="flex items-center justify-between">

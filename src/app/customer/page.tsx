@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { getToken, isTokenValid, removeToken } from '@/utils/token';
+import { getToken, isTokenValid, isTokenExpired, removeToken } from '@/utils/token';
 
 interface FAQ {
   id: number;
@@ -138,7 +138,8 @@ export default function CustomerService() {
         token: token ? '있음' : '없음',
         tokenLength: token ? token.length : 0,
         tokenPreview: token ? `${token.substring(0, 20)}...` : '없음',
-        isValid: token ? isTokenValid(token) : false
+        isValid: token ? isTokenValid(token) : false,
+        isExpired: token ? isTokenExpired(token) : true
       });
       
       if (!token) {
@@ -148,9 +149,20 @@ export default function CustomerService() {
         return;
       }
       
+      // 토큰이 만료된 경우
+      if (isTokenExpired(token)) {
+        console.log('토큰이 만료되었습니다. 로그아웃 처리합니다.');
+        removeToken();
+        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+        window.location.href = '/login';
+        return;
+      }
+      
       if (!isTokenValid(token)) {
-        console.log('토큰 형식이 유효하지 않지만 API 호출을 시도합니다.');
-        // 토큰 형식이 유효하지 않아도 API 호출을 시도해보기
+        console.log('토큰 형식이 유효하지 않습니다.');
+        setInquiries([]);
+        setInquiriesLoading(false);
+        return;
       }
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';

@@ -101,7 +101,6 @@ const NotificationList: React.FC<NotificationListProps> = ({ onClose }) => {
             <NotificationItem
               key={notification.id}
               notification={notification}
-              onClose={onClose}
             />
           ))
         )}

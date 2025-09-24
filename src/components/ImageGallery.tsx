@@ -18,7 +18,7 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
       case 'medium':
         return 'w-96 h-60'; // 중간 크기 (384x240px)
       case 'large':
-        return 'w-full h-full min-h-[500px]'; // 전체 크기 + 적절한 최소 높이
+        return 'w-full h-full'; // 전체 크기로 꽉 차게
       case 'custom':
         return 'w-[800px] h-[500px]'; // 사용자 정의 크기 (800x500px)
       default:
@@ -52,25 +52,36 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
   return (
     <div className="relative">
       {/* 현재 이미지 */}
-      <div className={`${getSizeStyles()} overflow-hidden rounded-lg bg-gray-100`}>
+      <div 
+        className={`${getSizeStyles()} overflow-hidden ${size === 'large' ? '' : 'rounded-lg'} ${size === 'large' ? 'bg-black' : 'bg-gray-100'}`}
+        style={size === 'large' ? { 
+          height: '100%', 
+          minHeight: '100%',
+          width: '100%',
+          minWidth: '100%',
+          display: 'grid',
+          placeItems: 'center'
+        } : {}}
+      >
         <img 
           src={imageUrls[currentImageIndex].trim()} 
           alt={`칼럼 이미지 ${currentImageIndex + 1}`}
           className={`w-full h-full ${
             size === 'large' ? 'object-cover' : 'object-contain'
-          }`} // large일 때는 cover로 꽉 차게, 나머지는 contain
-          style={{
-            ...(size === 'large' && {
-              objectPosition: 'center center', // large일 때 중앙 정렬
-              minHeight: '100%',
-              minWidth: '100%'
-            })
-          }}
+          }`}
+          style={size === 'large' ? {
+            height: '100%',
+            width: '100%',
+            minHeight: '100%',
+            minWidth: '100%',
+            objectPosition: 'center top',
+            objectFit: 'cover',
+            display: 'block',
+            transform: 'scale(1.05)',
+            transformOrigin: 'center top'
+          } : {}}
           onError={(e) => {
             console.error('이미지 로드 실패:', imageUrls[currentImageIndex]);
-            console.error('이미지 URL 배열:', imageUrls);
-            console.error('현재 이미지 인덱스:', currentImageIndex);
-            
             const imgElement = e.currentTarget;
             imgElement.style.display = 'none';
             
@@ -80,13 +91,6 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
               <div class="text-center">
                 <div class="text-sm font-medium mb-2">이미지를 불러올 수 없습니다</div>
                 <div class="text-xs text-gray-400">URL: ${imageUrls[currentImageIndex]}</div>
-                <div class="text-xs text-gray-400">상태: 404 Not Found</div>
-                <div class="text-xs text-gray-400">이미지 수정 후 새로고침이 필요할 수 있습니다</div>
-                <div class="text-xs text-gray-400 mt-2">
-                  <button onclick="window.location.reload()" class="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600">
-                    페이지 새로고침
-                  </button>
-                </div>
               </div>
             `;
             imgElement.parentNode?.appendChild(errorDiv);

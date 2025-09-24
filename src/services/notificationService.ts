@@ -415,6 +415,54 @@ export const markAllAsRead = async (notifications: Notification[]): Promise<void
   }
 };
 
+// 알림 삭제
+export const deleteNotification = async (notificationId: number): Promise<void> => {
+  try {
+    console.log(`🔄 알림 삭제 요청: ${baseUrl}/api/notifications/${notificationId}`);
+    console.log(`🆔 삭제할 알림 ID: ${notificationId}`);
+    
+    const headers = getHeaders();
+    console.log(`📋 요청 헤더:`, headers);
+    console.log(`🌐 요청 URL: ${baseUrl}/api/notifications/${notificationId}`);
+    
+    const response = await fetch(`${baseUrl}/api/notifications/${notificationId}`, {
+      method: 'DELETE',
+      headers: headers
+    });
+
+    console.log(`📡 알림 삭제 응답:`, {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`❌ 알림 삭제 실패:`, {
+        status: response.status,
+        errorText: errorText,
+        url: `${baseUrl}/api/notifications/${notificationId}`
+      });
+      throw new Error(`알림 삭제 실패: ${response.status} - ${errorText}`);
+    } else {
+      // 성공 응답도 확인
+      try {
+        const responseText = await response.text();
+        console.log(`✅ 알림 삭제 성공 응답:`, responseText);
+        console.log(`✅ 서버에서 알림 ID ${notificationId} 삭제 완료`);
+      } catch (e) {
+        console.log(`✅ 알림 삭제 성공 (응답 본문 없음)`);
+        console.log(`✅ 서버에서 알림 ID ${notificationId} 삭제 완료`);
+      }
+    }
+  } catch (error) {
+    console.error('알림 삭제 실패:', error);
+    console.error('요청 URL:', `${baseUrl}/api/notifications/${notificationId}`);
+    throw error;
+  }
+};
+
 // 관리자 알림 조회
 export const getAdminNotifications = async (): Promise<NotificationResponse> => {
   try {

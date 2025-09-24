@@ -10,11 +10,10 @@ import { X, Check } from 'lucide-react';
 
 interface NotificationItemProps {
   notification: Notification;
-  onClose?: () => void;
 }
 
-const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClose }) => {
-  const { markNotificationAsRead } = useNotification();
+const NotificationItem: React.FC<NotificationItemProps> = ({ notification }) => {
+  const { markNotificationAsRead, deleteNotificationById } = useNotification();
   const config = getNotificationConfig(notification.notification_type);
 
   // isRead 상태를 올바르게 처리 (number 또는 boolean)
@@ -28,6 +27,11 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
     } else {
       console.log(`⚠️ 이미 읽음 처리된 알림: ID ${notification.id}`);
     }
+  };
+
+  const handleDelete = () => {
+    console.log(`🗑️ 알림 삭제 버튼 클릭: ID ${notification.id}`);
+    deleteNotificationById(notification.id);
   };
 
   const formatTime = (dateString: string) => {
@@ -104,15 +108,14 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
           </div>
         </div>
 
-        {/* 닫기 버튼 (모달에서 사용) */}
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+        {/* 삭제 버튼 */}
+        <button
+          onClick={handleDelete}
+          className="flex-shrink-0 text-gray-400 hover:text-red-600 transition-colors"
+          title="알림 삭제"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

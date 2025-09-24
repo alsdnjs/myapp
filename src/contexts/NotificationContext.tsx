@@ -22,6 +22,7 @@ interface NotificationContextType {
   fetchNotifications: () => Promise<void>;
   markNotificationAsRead: (id: number) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
+  deleteNotificationById: (id: number) => void;
   addNotification: (notification: Notification) => void;
   clearNotifications: () => void;
 }
@@ -182,6 +183,27 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     }
   }, [notifications, fetchNotifications]);
 
+  // 알림 삭제 (프론트엔드에서만)
+  const deleteNotificationById = useCallback((id: number) => {
+    try {
+      console.log(`🔄 알림 삭제 시작: ID ${id} (프론트엔드에서만)`);
+      
+      // 로컬 상태에서만 알림 제거
+      setNotifications(prev => {
+        const filtered = prev.filter(notification => notification.id !== id);
+        const unreadCount = calculateUnreadCount(filtered);
+        setUnreadCount(unreadCount);
+        console.log(`✅ 알림 ID ${id} 제거 완료 (로컬 상태에서만)`);
+        return filtered;
+      });
+      
+      console.log('✅ 알림 삭제 완료 (프론트엔드에서만)');
+    } catch (error) {
+      console.error('알림 삭제 실패:', error);
+      alert('알림 삭제에 실패했습니다. 다시 시도해주세요.');
+    }
+  }, [calculateUnreadCount]);
+
   // 새 알림 추가 (WebSocket에서 수신)
   const addNotification = useCallback((notification: Notification) => {
     setNotifications(prev => {
@@ -243,6 +265,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     fetchNotifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    deleteNotificationById,
     addNotification,
     clearNotifications
   };
