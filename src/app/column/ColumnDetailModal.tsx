@@ -44,6 +44,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
   // 답글 표시 상태 관리
   const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
   
+  
   // 현재 사용자 정보
   const [currentUser, setCurrentUser] = useState<{ id: number; username: string } | null>(null);
   
@@ -880,21 +881,21 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         } 
         // 2. board_content에서 [제목] 형식으로 파싱 시도
         else if (data.board_content && data.board_content.includes('[') && data.board_content.includes(']')) {
-          const parsed = parseTitleAndContent(data.board_content);
-          title = parsed.title;
-          content = parsed.content;
+          // [제목]내용 형식이면 전체를 제목으로 사용하고 내용은 비움
+          title = data.board_content;
+          content = '';
         }
         // 3. content에서 [제목] 형식으로 파싱 시도
         else if (data.content && data.content.includes('[') && data.content.includes(']')) {
-          const parsed = parseTitleAndContent(data.content);
-          title = parsed.title;
-          content = parsed.content;
+          // [제목]내용 형식이면 전체를 제목으로 사용하고 내용은 비움
+          title = data.content;
+          content = '';
         }
         // 4. 모든 방법이 실패하면 기본값 사용
         else {
           const fullContent = data.board_content || data.content || '';
           title = fullContent.length > 50 ? fullContent.substring(0, 50) + '...' : fullContent || '제목 없음';
-          content = fullContent;
+          content = '';
         }
         
         console.log('파싱된 제목:', title);
@@ -1123,15 +1124,6 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
 
             <div className="flex items-center justify-between mt-4 mb-2">
               <h1 className="text-xl font-semibold">{loading ? '불러오는 중...' : (column?.title ?? '제목')}</h1>
-              <button
-                onClick={handleReportBoard}
-                className="text-gray-400 hover:text-red-500 transition-colors p-2"
-                title="게시글 신고하기"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </button>
             </div>
 
             <div className="flex items-center justify-between">
@@ -1180,6 +1172,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
                 <div className="flex items-center space-x-2">
                   <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
                   <span className="text-sm font-medium">{column?.views?.toLocaleString?.() ?? 0}</span>
                 </div>
@@ -1198,27 +1191,29 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
             </div>
           </div>
 
-          {/* 본문 (고정 높이) */}
-          <div className="p-4 border-b border-gray-200">
-            {loading ? (
-              <div className="animate-pulse">
-                <div className="h-6 bg-gray-200 rounded mb-3"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                <div className="h-32 bg-gray-200 rounded"></div>
-              </div>
-            ) : (
-              <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                {column?.content ?? ''}
-              </div>
-            )}
-          </div>
+          {/* 본문 - 내용이 있을 때만 표시, 최대 높이 제한 */}
+          {column?.content && column.content.trim() !== '' && (
+            <div className="p-4 border-b border-gray-200 max-h-64 overflow-y-auto">
+              {loading ? (
+                <div className="animate-pulse">
+                  <div className="h-6 bg-gray-200 rounded mb-3"></div>
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-32 bg-gray-200 rounded"></div>
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                  {column.content}
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* 댓글 섹션 (별도 스크롤) */}
+          {/* 댓글 섹션 - 항상 표시 */}
           <div className="flex-1 overflow-y-auto border-t border-gray-200">
             <div className="p-4">
-            <h3 className="text-lg font-semibold mb-4">댓글</h3>
+              <h3 className="text-lg font-semibold mb-4">댓글</h3>
             
             {/* 댓글 입력 폼 */}
             <div className="mb-6">
@@ -1526,13 +1521,6 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
             </div>
           </div>
 
-          {/* 하단 액션 (선택) */}
-          <div className="border-t border-gray-200 p-4 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button className="text-gray-600 hover:text-blue-600 transition-colors">공유</button>
-            </div>
-            <button className="text-gray-600 hover:text-blue-600 transition-colors">북마크</button>
-          </div>
         </div>
       </div>
 

@@ -35,16 +35,30 @@ export default function ColumnEditModal({ isOpen, onClose, column, onUpdated }: 
 
   // 이미지 선택 핸들러
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('📸 handleImageUpload 함수 호출됨');
+    
     const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+    console.log('   - 선택된 파일 개수:', files.length);
+    console.log('   - 선택된 파일들:', files);
+    
+    if (files.length === 0) {
+      console.log('❌ 선택된 파일이 없음');
+      return;
+    }
 
     // 새 이미지들을 기존 이미지에 추가
     const newFiles = [...selectedFiles, ...files];
+    console.log('   - 기존 파일 개수:', selectedFiles.length);
+    console.log('   - 새로운 파일 개수:', files.length);
+    console.log('   - 총 파일 개수:', newFiles.length);
+    
     setSelectedFiles(newFiles);
 
     // 미리보기용 Data URL 생성
     const newImages = files.map(file => URL.createObjectURL(file));
     setSelectedImages(prev => [...prev, ...newImages]);
+    
+    console.log('✅ 이미지 선택 완료');
   };
 
   // 이미지 제거 핸들러
@@ -65,14 +79,84 @@ export default function ColumnEditModal({ isOpen, onClose, column, onUpdated }: 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
+    console.log('🚀 handleSubmit 함수 시작');
+    console.log('📋 현재 상태:');
+    console.log('   - title:', title);
+    console.log('   - content:', content);
+    console.log('   - selectedFiles:', selectedFiles);
+    console.log('   - selectedFiles.length:', selectedFiles.length);
+    
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    
+    if (!title.trim() || !content.trim()) {
+      console.log('❌ 제목 또는 내용이 비어있음');
+      console.log('   - title.trim():', title.trim());
+      console.log('   - content.trim():', content.trim());
+      return;
+    }
+    
+    console.log('✅ 유효성 검사 통과 - 토큰 검증 시작');
 
     const token = getToken();
-    console.log('보내는 토큰:', token);
-
+    
+    // 🔍 JWT 토큰 상세 검증 로그
+    console.log('🔍 JWT 토큰 검증 시작');
+    console.log('1. 토큰 존재 여부:', !!token);
+    console.log('2. 토큰 길이:', token ? token.length : 0);
+    console.log('3. 토큰 미리보기:', token ? `${token.substring(0, 30)}...` : '없음');
+    
     if (!token) {
+      console.error('❌ JWT 토큰이 없습니다');
       alert('로그인이 필요합니다. 다시 로그인해주세요.');
+      return;
+    }
+
+    // JWT 토큰 형식 검증 (header.payload.signature)
+    const tokenParts = token.split('.');
+    console.log('4. JWT 토큰 형식 검증:');
+    console.log('   - 토큰 부분 개수:', tokenParts.length);
+    console.log('   - 형식 유효성:', tokenParts.length === 3 ? '✅ 유효' : '❌ 무효');
+    
+    if (tokenParts.length !== 3) {
+      console.error('❌ JWT 토큰 형식이 올바르지 않습니다');
+      alert('토큰이 유효하지 않습니다. 다시 로그인해주세요.');
+      return;
+    }
+
+    // JWT 페이로드 디코딩 및 만료 시간 확인
+    try {
+      // Base64 URL-safe 디코딩
+      let payloadBase64 = tokenParts[1];
+      payloadBase64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+      while (payloadBase64.length % 4) {
+        payloadBase64 += '=';
+      }
+      
+      const payload = JSON.parse(atob(payloadBase64));
+      console.log('5. JWT 페이로드 분석:');
+      console.log('   - 사용자 ID:', payload.user_id || payload.id || '없음');
+      console.log('   - 사용자명:', payload.username || payload.name || '없음');
+      console.log('   - 발급 시간(iat):', payload.iat ? new Date(payload.iat * 1000).toISOString() : '없음');
+      console.log('   - 만료 시간(exp):', payload.exp ? new Date(payload.exp * 1000).toISOString() : '없음');
+      
+      // 만료 시간 확인
+      const currentTime = Math.floor(Date.now() / 1000);
+      const isExpired = payload.exp ? currentTime >= payload.exp : false;
+      console.log('6. 토큰 만료 확인:');
+      console.log('   - 현재 시간:', currentTime, new Date().toISOString());
+      console.log('   - 만료 시간:', payload.exp || '없음');
+      console.log('   - 만료 여부:', isExpired ? '❌ 만료됨' : '✅ 유효함');
+      
+      if (isExpired) {
+        console.error('❌ JWT 토큰이 만료되었습니다');
+        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+        return;
+      }
+      
+      console.log('✅ JWT 토큰 검증 완료 - API 호출 진행');
+    } catch (e) {
+      console.error('❌ JWT 토큰 디코딩 실패:', e);
+      alert('토큰이 손상되었습니다. 다시 로그인해주세요.');
       return;
     }
 
@@ -81,52 +165,133 @@ export default function ColumnEditModal({ isOpen, onClose, column, onUpdated }: 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
 
-      // FormData 생성
-      const formData = new FormData();
-      formData.append('title', title.trim());
-      formData.append('content', content.trim());
+      // 기존 이미지 상태 확인
+      const hasExistingImage = !!(column?.imageUrls || column?.image_url);
+      const hasNewImage = selectedFiles.length > 0;
       
-      // 선택된 이미지 파일들 추가
-      selectedFiles.forEach(file => {
-        formData.append('images', file);
-      });
+      console.log('🔍 이미지 상태 분석:');
+      console.log('- 기존 이미지 있음:', hasExistingImage);
+      console.log('- 새 이미지 추가:', hasNewImage);
+      console.log('- 기존 이미지 URL:', column?.imageUrls || column?.image_url);
       
-      // 전송할 데이터 로그 출력
-      console.log('이미지 수정 전송 데이터:');
-      console.log('- title:', title.trim());
-      console.log('- content:', content.trim());
-      console.log('- selectedFiles:', selectedFiles);
-      console.log('- selectedFiles 개수:', selectedFiles.length);
+      let resp;
       
-      // FormData 내용 확인
-      for (let [key, value] of formData.entries()) {
-        console.log(`FormData - ${key}:`, value);
-      }
-
-      const resp = await fetch(`${baseUrl}/api/board/update-with-images/${column.id}`, {
-        method: 'PUT',
-        headers: {
+      if (hasNewImage) {
+        // 새 이미지를 추가하는 경우
+        console.log('📸 새 이미지 추가/변경 - FormData 사용');
+        
+        const formData = new FormData();
+        formData.append('title', title.trim());
+        formData.append('content', content.trim());
+        
+        // 기존 이미지가 있으면 삭제 표시
+        if (hasExistingImage) {
+          formData.append('replace_existing_images', 'true');
+          console.log('🔄 기존 이미지 교체 모드');
+        } else {
+          console.log('➕ 기존 이미지 없음 - 새로 추가');
+        }
+        
+        // 선택된 이미지 파일들 추가
+        selectedFiles.forEach(file => {
+          formData.append('images', file);
+        });
+        
+        console.log('이미지 수정 전송 데이터:');
+        console.log('- title:', title.trim());
+        console.log('- content:', content.trim());
+        console.log('- selectedFiles 개수:', selectedFiles.length);
+        console.log('- replace_existing_images:', hasExistingImage);
+        
+        // 요청 헤더 상세 로깅
+        const headers = {
           'Authorization': `Bearer ${token}`,
           // Content-Type은 자동으로 설정됨 (multipart/form-data)
-        },
-        body: formData,
-      });
+        };
+        
+        console.log('7. API 요청 헤더 확인:');
+        console.log('   - Authorization 헤더 존재:', !!headers.Authorization);
+        console.log('   - Authorization 값:', headers.Authorization.substring(0, 30) + '...');
+        console.log('   - 요청 URL:', `${baseUrl}/api/board/board/${column.id}`);
+        console.log('   - 요청 메서드:', 'PUT');
+        console.log('   - Content-Type:', 'multipart/form-data (자동 설정)');
+        
+        // 기존 글 수정 API 사용 (이미지 포함)
+        resp = await fetch(`${baseUrl}/api/board/board/${column.id}`, {
+          method: 'PUT',
+          headers,
+          body: formData,
+        });
+      } else {
+        // 이미지가 없는 경우: URLSearchParams 사용
+        console.log('📝 텍스트만 수정 - URLSearchParams 사용');
+        
+        const requestData = new URLSearchParams();
+        requestData.append('title', title.trim());
+        requestData.append('content', content.trim());
+        
+        console.log('텍스트 수정 전송 데이터:');
+        console.log('- title:', title.trim());
+        console.log('- content:', content.trim());
+        console.log('- 기존 이미지 유지:', hasExistingImage);
+        
+        // 요청 헤더 상세 로깅
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        };
+        
+        console.log('7. API 요청 헤더 확인:');
+        console.log('   - Authorization 헤더 존재:', !!headers.Authorization);
+        console.log('   - Authorization 값:', headers.Authorization.substring(0, 30) + '...');
+        console.log('   - 요청 URL:', `${baseUrl}/api/board/board/${column.id}`);
+        console.log('   - 요청 메서드:', 'PUT');
+        console.log('   - Content-Type:', headers['Content-Type']);
+        
+        // 기존 글 수정 API 사용 (텍스트만)
+        resp = await fetch(`${baseUrl}/api/board/board/${column.id}`, {
+          method: 'PUT',
+          headers,
+          body: requestData,
+        });
+      }
 
-      console.log('응답 상태:', resp.status);
-      console.log('응답 헤더:', Object.fromEntries(resp.headers.entries()));
+      console.log('8. API 응답 분석:');
+      console.log('   - 응답 상태 코드:', resp.status);
+      console.log('   - 응답 상태 텍스트:', resp.statusText);
+      console.log('   - 응답 성공 여부:', resp.ok ? '✅ 성공' : '❌ 실패');
+      console.log('   - 응답 헤더:', Object.fromEntries(resp.headers.entries()));
 
       if (!resp.ok) {
+        console.error('❌ API 요청 실패');
+        
+        // 응답 본문 확인
+        try {
+          const errorText = await resp.text();
+          console.error('   - 오류 응답 본문:', errorText);
+        } catch (e) {
+          console.error('   - 응답 본문 읽기 실패:', e);
+        }
+        
         if (resp.status === 401) {
+          console.error('🔒 401 Unauthorized - 인증 실패');
+          console.error('   - JWT 토큰이 유효하지 않거나 만료됨');
+          console.error('   - Authorization 헤더 문제 가능성');
           alert('로그인이 필요합니다. 다시 로그인해주세요.');
         } else if (resp.status === 403) {
+          console.error('🚫 403 Forbidden - 권한 없음');
           alert('작성자만 수정할 수 있습니다.');
         } else if (resp.status === 404) {
+          console.error('🔍 404 Not Found - 게시글 없음');
           alert('게시글을 찾을 수 없습니다.');
         } else {
-          alert('수정 실패했습니다.');
+          console.error('💥 기타 오류:', resp.status);
+          alert(`수정 실패했습니다. (상태: ${resp.status})`);
         }
         return;
       }
+      
+      console.log('✅ API 요청 성공');
 
       // 성공 응답 내용 확인
       const responseText = await resp.text();
@@ -316,6 +481,13 @@ export default function ColumnEditModal({ isOpen, onClose, column, onUpdated }: 
               <button
                 type="submit"
                 disabled={submitting || !title.trim() || !content.trim()}
+                onClick={() => {
+                  console.log('🔘 저장 버튼 클릭됨');
+                  console.log('   - submitting:', submitting);
+                  console.log('   - title.trim():', title.trim());
+                  console.log('   - content.trim():', content.trim());
+                  console.log('   - 버튼 비활성화 여부:', submitting || !title.trim() || !content.trim());
+                }}
                 className={`px-6 py-2 rounded-lg text-white ${
                   submitting || !title.trim() || !content.trim()
                     ? 'bg-gray-300 cursor-not-allowed'
@@ -331,4 +503,3 @@ export default function ColumnEditModal({ isOpen, onClose, column, onUpdated }: 
     </div>
   );
 }
-

@@ -72,7 +72,13 @@ export const parseTitleAndContent = (combinedContent: string): { title: string; 
   if (titleMatch) {
     // [제목] 내용 형식인 경우
     const title = titleMatch[1];
-    const content = titleMatch[2];
+    let content = titleMatch[2];
+    
+    // 내용에서 제목과 동일한 부분이 있으면 제거
+    if (content.startsWith(title)) {
+      content = content.substring(title.length).trim();
+    }
+    
     return { title, content };
   } else {
     // 제목이 없는 경우 내용 전체를 제목으로 사용
