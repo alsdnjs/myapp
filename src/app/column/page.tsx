@@ -1280,52 +1280,25 @@ export default function Column() {
 
                     {/* 제목, 내용, 이미지를 가로로 배치 */}
                     <div className="px-4">
-                      <div className="flex gap-4">
-                        {/* 이미지 영역 - 왼쪽으로 이동 */}
-                        {(column.imageUrls || column.image_url) && (
-                          <div className="flex-shrink-0">
-                            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="small" />
-                          </div>
-                        )}
-
-                        {/* 텍스트 영역 - 오른쪽으로 이동 */}
+                      <div className="flex gap-6">
+                        {/* 텍스트 영역 - 왼쪽으로 이동 */}
                         <div className="flex-1">
                           <h2 className="text-xl font-bold mb-3">{column.title}</h2>
                           
-                          {/* 내용 (더보기 버튼으로 표시/숨김) */}
-                          {expandedColumns.includes(column.id) && (
-                            <div className="mb-4">
-                              <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">
-                                {column.content}
-                              </p>
-                            </div>
-                          )}
-                          
-                          {/* 더보기/접기 버튼 - 항상 표시 */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleExpand(column.id);
-                            }}
-                            className="text-blue-500 hover:text-blue-600 font-medium text-sm flex items-center mb-4"
-                          >
-                            {expandedColumns.includes(column.id) ? (
-                              <>
-                                접기
-                                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                                </svg>
-                              </>
-                            ) : (
-                              <>
-                                더보기
-                                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                </svg>
-                              </>
-                            )}
-                          </button>
+                          {/* 내용 - 항상 표시 */}
+                          <div className="mb-4">
+                            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">
+                              {column.content}
+                            </p>
+                          </div>
                         </div>
+
+                        {/* 이미지 영역 - 오른쪽으로 이동 */}
+                        {(column.imageUrls || column.image_url) && (
+                          <div className="flex-shrink-0 pr-4">
+                            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="small" />
+                          </div>
+                        )}
                       </div>
                     </div>
 

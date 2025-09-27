@@ -18,6 +18,7 @@ interface ColumnDetail {
   imageUrls?: string; // 여러 이미지를 위한 필드 추가
   isLiked?: boolean; // 좋아요 상태 추가
   commentList?: any[]; // 댓글 목록 필드 추가
+  user_id?: number; // 작성자 ID 추가
 }
 
 interface ColumnDetailModalProps {
@@ -226,26 +227,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         }
         
         if (resp.status === 401) {
-          console.log('🚨 백엔드 인증 문제 감지 - 임시로 프론트엔드에서만 처리');
-          
-          // 임시로 프론트엔드에서만 좋아요 상태 변경
-          const newIsLiked = !column.isLiked;
-          const newCount = newIsLiked ? column.likeCount + 1 : column.likeCount - 1;
-          
-          // 로컬 상태 업데이트
-          setColumn(prevColumn => ({
-            ...prevColumn,
-            isLiked: newIsLiked,
-            likeCount: newCount
-          }));
-          
-          // 부모 컴포넌트에 알림
-          if (onLikeChange) {
-            onLikeChange(column.id, newIsLiked, newCount);
-          }
-          
-          console.log('✅ 임시 처리 완료:', { columnId: column.id, isLiked: newIsLiked, count: newCount });
-          alert('백엔드 인증 문제로 임시 처리되었습니다.\n페이지 새로고침 시 원래 상태로 돌아갑니다.');
+          alert('인증이 필요합니다. 다시 로그인해주세요.');
         } else {
           alert(`좋아요 처리에 실패했습니다.\n상태: ${resp.status}\n메시지: ${responseText}`);
         }
@@ -1114,7 +1096,7 @@ export default function ColumnDetailModal({ isOpen, onClose, columnId, onLikeCha
         </div>
 
         {/* 오른쪽: 상세 섹션 */}
-        <div className="w-1/2 flex flex-col rounded-r-lg overflow-hidden bg-white"> {/* w-1/4에서 w-1/2로 변경 */}
+        <div className="w-1/2 flex flex-col rounded-r-lg overflow-hidden bg-white">
           {/* 작성자/닫기/제목/통계 - 댓글 모달 상단과 유사 */}
           <div className="border-b border-gray-200 p-4">
             <div className="flex items-center justify-between">

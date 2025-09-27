@@ -148,7 +148,7 @@ export default function AdminDashboard() {
           <p className="mt-1 text-sm text-gray-500">관리자 대시보드에 오신 것을 환영합니다.</p>
         </div>
     <button
-          onClick={() => {
+                onClick={() => {
             fetchDashboardStats();
             fetchRecentNotifications();
           }}
@@ -268,9 +268,9 @@ export default function AdminDashboard() {
           <div className="flex items-center">
             <Bell className="h-5 w-5 text-gray-600 mr-2" />
             <h3 className="text-lg leading-6 font-medium text-gray-900">최근 알림</h3>
-          </div>
+            </div>
           <p className="mt-1 max-w-2xl text-sm text-gray-500">최근 관리자 알림 내역입니다.</p>
-        </div>
+          </div>
         <div className="border-t border-gray-200">
           {notificationsLoading ? (
             <div className="px-4 py-4 sm:px-6">
@@ -281,11 +281,11 @@ export default function AdminDashboard() {
                     <div className="flex-1 space-y-2">
                       <div className="h-4 bg-gray-200 rounded w-3/4"></div>
                       <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                  </div>
+                </div>
+                ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
           ) : recentNotifications.length > 0 ? (
             <ul className="divide-y divide-gray-200">
               {recentNotifications.map((notification) => {
@@ -297,7 +297,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center">
                       <div className="flex-shrink-0">
                         <span className="text-2xl">{config.icon}</span>
-                      </div>
+                    </div>
                       <div className="ml-4 flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className={`text-sm font-medium ${!isRead ? 'text-blue-900' : 'text-gray-900'}`}>
@@ -306,17 +306,17 @@ export default function AdminDashboard() {
                           {!isRead && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                               새 알림
-                            </span>
-                          )}
-                        </div>
+                    </span>
+                        )}
+                      </div>
                         <p className={`text-sm ${!isRead ? 'text-blue-700' : 'text-gray-500'} mt-1`}>
                           {notification.notification_message}
                         </p>
                         <p className="text-xs text-gray-400 mt-1">
                           {formatTimeAgo(notification.created_at)}
                         </p>
-                      </div>
                     </div>
+                  </div>
                   </li>
                 );
               })}
@@ -326,9 +326,9 @@ export default function AdminDashboard() {
               <Bell className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">알림이 없습니다</h3>
               <p className="mt-1 text-sm text-gray-500">아직 받은 알림이 없습니다.</p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+                </div>
       </div>
     </div>
   );

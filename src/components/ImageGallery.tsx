@@ -50,36 +50,20 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
   const hasMultipleImages = imageUrls.length > 1;
 
   return (
-    <div className="relative">
+    <>
       {/* 현재 이미지 */}
-      <div 
-        className={`${getSizeStyles()} overflow-hidden ${size === 'large' ? '' : 'rounded-lg'} ${size === 'large' ? 'bg-black' : 'bg-gray-100'}`}
-        style={size === 'large' ? { 
-          height: '100%', 
-          minHeight: '100%',
-          width: '100%',
-          minWidth: '100%',
-          display: 'grid',
-          placeItems: 'center'
-        } : {}}
-      >
+      {size === 'large' ? (
         <img 
           src={imageUrls[currentImageIndex].trim()} 
           alt={`칼럼 이미지 ${currentImageIndex + 1}`}
-          className={`w-full h-full ${
-            size === 'large' ? 'object-cover' : 'object-contain'
-          }`}
-          style={size === 'large' ? {
-            height: '100%',
+          className="w-full h-full object-contain"
+          style={{
             width: '100%',
-            minHeight: '100%',
-            minWidth: '100%',
-            objectPosition: 'center top',
-            objectFit: 'cover',
-            display: 'block',
-            transform: 'scale(1.05)',
-            transformOrigin: 'center top'
-          } : {}}
+            height: '100%',
+            objectFit: 'contain',
+            objectPosition: 'center center',
+            display: 'block'
+          }}
           onError={(e) => {
             console.error('이미지 로드 실패:', imageUrls[currentImageIndex]);
             const imgElement = e.currentTarget;
@@ -96,7 +80,27 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
             imgElement.parentNode?.appendChild(errorDiv);
           }}
         />
-      </div>
+      ) : (
+        <div 
+          className={`${getSizeStyles()} overflow-hidden ${size === 'large' ? '' : 'rounded-lg'} ${size === 'large' ? 'bg-black' : 'bg-gray-100'}`}
+        >
+          <img 
+            src={imageUrls[currentImageIndex].trim()} 
+            alt={`칼럼 이미지 ${currentImageIndex + 1}`}
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              console.error('이미지 로드 실패:', imageUrls[currentImageIndex]);
+              const imgElement = e.currentTarget;
+              imgElement.style.display = 'none';
+              
+              const errorDiv = document.createElement('div');
+              errorDiv.className = 'w-full h-full bg-gray-200 flex items-center justify-center text-gray-500';
+              errorDiv.textContent = '이미지를 불러올 수 없습니다';
+              imgElement.parentNode?.appendChild(errorDiv);
+            }}
+          />
+        </div>
+      )}
       
       {/* 네비게이션 버튼들 (여러 이미지일 때만) */}
       {hasMultipleImages && (
@@ -155,6 +159,6 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }
