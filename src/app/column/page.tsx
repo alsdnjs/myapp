@@ -132,12 +132,17 @@ export default function Column() {
 
   // 서버 아이템을 화면 모델로 변환
   const mapServerItemToColumn = (item: any): Column => {
-    const { title, content } = parseTitleAndContent(item.board_content || item.content);
+    const title = item.board_title || '';
+    const content = item.board_content || item.content || '';
     
     // 디버깅: 백엔드 응답 구조 확인
-    console.log('백엔드 응답 데이터:', item);
-    console.log('이미지 URL (image_url):', item.image_url);
-    console.log('이미지 URL (imageUrl):', item.imageUrl);
+    console.log('🔍 게시물 데이터 분석:');
+    console.log('- 전체 item:', item);
+    console.log('- board_title:', item.board_title);
+    console.log('- board_content:', item.board_content);
+    console.log('- content:', item.content);
+    console.log('- 최종 title:', title);
+    console.log('- 최종 content:', content);
     console.log('이미지 URL (image_path):', item.image_path);
     console.log('이미지 URL (attachment_url):', item.attachment_url);
     
@@ -286,13 +291,11 @@ export default function Column() {
       return;
     }
     
-    // content에서 제목과 내용 분리
-    const { title, content } = parseTitleAndContent(column.content);
-    
+    // Column 객체의 필드 사용 (board_content, board_title은 API 응답에만 있음)
     setEditTarget({ 
       id: column.id, 
       content: column.content,
-      title: title,
+      title: column.title,
       imageUrls: column.imageUrls,
       image_url: column.image_url
     });
@@ -1160,7 +1163,11 @@ export default function Column() {
                       </div>
                     </div>
                     <h3 className="font-bold mb-2 line-clamp-2">{column.title}</h3>
-                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{column.content}</p>
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                      {column.content && column.content.length > 200 
+                        ? column.content.substring(0, 200) + '...' 
+                        : column.content}
+                    </p>
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>{column.author}</span>
                       <div className="flex items-center space-x-3">
@@ -1288,7 +1295,9 @@ export default function Column() {
                           {/* 내용 - 항상 표시 */}
                           <div className="mb-4">
                             <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">
-                              {column.content}
+                              {column.content && column.content.length > 200 
+                                ? column.content.substring(0, 200) + '...' 
+                                : column.content}
                             </p>
                           </div>
                         </div>
@@ -1340,14 +1349,6 @@ export default function Column() {
                             </svg>
                           </button>
                         </div>
-                        <button 
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-gray-600 hover:text-blue-500 transition-colors"
-                        >
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                          </svg>
-                        </button>
                       </div>
 
                       {/* 통계 */}

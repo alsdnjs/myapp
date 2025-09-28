@@ -68,7 +68,11 @@ export default function Header() {
 
   const checkLoginStatus = async (tokenOverride: string | null) => {
     const token = tokenOverride || getToken();
-    console.log("checkLoginStatus 실행, 토큰:", token ? "있음" : "없음");
+    console.log("🔍 Header checkLoginStatus 실행");
+    console.log("   - tokenOverride:", tokenOverride ? "있음" : "없음");
+    console.log("   - getToken() 결과:", token ? "있음" : "없음");
+    console.log("   - 토큰 길이:", token ? token.length : 0);
+    console.log("   - localStorage 직접 확인:", localStorage.getItem('jwt_token') ? "있음" : "없음");
 
     if (!token) {
       console.log("토큰이 없으므로 로그아웃 상태로 처리합니다.");

@@ -150,9 +150,9 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
       // FormData 생성
       const formData = new FormData();
       
-      // 제목과 내용을 [제목] 내용 형식으로 합쳐서 전송
-      const combinedContent = title ? `[${title}] ${content}` : content;
-      formData.append('content', combinedContent);
+      // title과 content를 분리해서 전송
+      formData.append('title', title);
+      formData.append('content', content);
       
       // 이미지 파일들을 FormData에 추가
       if (selectedFiles.length > 0) {
@@ -164,7 +164,8 @@ export default function ColumnWriteModal({ onClose, onSubmit }: ColumnWriteModal
       
       console.log('글작성 API 호출 시작...');
       console.log('FormData 내용:', {
-        content: combinedContent,
+        title: title,
+        content: content,
         imagesCount: selectedFiles.length || 0
       });
       

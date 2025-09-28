@@ -14,7 +14,7 @@ export default function ImageGallery({ imageUrl, size = 'medium' }: ImageGallery
   const getSizeStyles = () => {
     switch (size) {
       case 'small':
-        return 'w-64 h-40'; // 기존 크기 (256x160px)
+        return 'w-80 h-48'; // 더 큰 크기 (320x192px)
       case 'medium':
         return 'w-96 h-60'; // 중간 크기 (384x240px)
       case 'large':
