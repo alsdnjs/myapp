@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import Sidebar from '@/components/Sidebar';
 import CommentModal from "@/components/CommentModal";
 import ColumnWriteModal from './ColumnWriteModal';
 import ColumnEditModal, { ColumnEditData } from './ColumnEditModal';
@@ -60,7 +59,7 @@ export default function Column() {
 
   // 전체 칼럼 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 20;
 
   // 더보기 상태 관리
   const [expandedColumns, setExpandedColumns] = useState<number[]>([]);
@@ -85,17 +84,44 @@ export default function Column() {
 
   // 댓글 개수 계산 함수 (백엔드 필드 우선 사용)
   const calculateCommentCount = (item: any): number => {
-    // 1. 백엔드에서 제공하는 카운트 필드 사용
-    if (item.comment_count !== undefined) return Number(item.comment_count);
-    if (item.comments !== undefined) return Number(item.comments);
-    if (item.commentCount !== undefined) return Number(item.commentCount);
+    console.log('🔍 댓글 개수 계산 - 전체 item:', item);
+    console.log('🔍 댓글 개수 계산 - 댓글 관련 필드들:', {
+      itemId: item.board_id || item.id,
+      comment_count: item.comment_count,
+      comments: item.comments,
+      commentCount: item.commentCount,
+      comment_list: item.comment_list,
+      commentList: item.commentList,
+      allKeys: Object.keys(item)
+    });
+    
+    // 1. 백엔드에서 제공하는 카운트 필드 사용 (다양한 필드명 확인)
+    if (item.comment_count !== undefined && item.comment_count !== null) {
+      console.log('✅ comment_count 사용:', item.comment_count);
+      return Number(item.comment_count);
+    }
+    if (item.comments !== undefined && item.comments !== null) {
+      console.log('✅ comments 사용:', item.comments);
+      return Number(item.comments);
+    }
+    if (item.commentCount !== undefined && item.commentCount !== null) {
+      console.log('✅ commentCount 사용:', item.commentCount);
+      return Number(item.commentCount);
+    }
+    if (item.comment_list !== undefined && item.comment_list !== null) {
+      console.log('✅ comment_list 사용:', item.comment_list);
+      return Number(item.comment_list);
+    }
     
     // 2. commentList가 있으면 실제 길이 사용
     if (item.commentList && Array.isArray(item.commentList)) {
-      return item.commentList.length;
+      const count = item.commentList.length;
+      console.log('✅ commentList 길이 사용:', count);
+      return count;
     }
     
     // 3. 기본값 0
+    console.log('❌ 기본값 0 사용 - 댓글 관련 필드를 찾을 수 없음');
     return 0;
   };
 
@@ -105,8 +131,11 @@ export default function Column() {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:8080';
       const response = await fetch(`${baseUrl}/api/board/comment/${boardId}`);
       
+      console.log(`🔍 ${boardId}번 게시물 댓글 API 호출:`, response.status);
+      
       if (response.ok) {
         const comments = await response.json();
+        console.log(`📝 ${boardId}번 게시물 댓글 응답:`, comments);
         
         // 댓글 개수 계산 (대댓글 포함)
         let totalCount = 0;
@@ -121,11 +150,14 @@ export default function Column() {
           }
         }
         
+        console.log(`📊 ${boardId}번 게시물 총 댓글 개수: ${totalCount}`);
         return totalCount;
       } else {
+        console.log(`❌ ${boardId}번 게시물 댓글 API 실패:`, response.status);
         return 0;
       }
     } catch (error) {
+      console.log(`💥 ${boardId}번 게시물 댓글 API 오류:`, error);
       return 0;
     }
   };
@@ -240,7 +272,7 @@ export default function Column() {
       author: item.username || item.author || '익명',
       date: item.uploaded_at || item.date || new Date().toISOString(),
       views: Number(item.view || item.views || 0),
-      comments: calculateCommentCount(item),
+      comments: 0, // 초기값 0으로 설정, 나중에 fetchCommentCount로 업데이트
       likes: Number(item.like_count || item.likes || 0),
       content: content || '내용 없음',
       image_url: fullImageUrl || undefined,
@@ -886,11 +918,20 @@ export default function Column() {
           // 각 게시글의 댓글 개수를 가져와서 업데이트
           const columnsWithCommentCounts = await Promise.all(
             serverColumns.map(async (column) => {
-              const commentCount = await fetchCommentCount(column.id);
-              return {
-                ...column,
-                comments: commentCount
-              };
+              try {
+                const commentCount = await fetchCommentCount(column.id);
+                console.log(`✅ ${column.id}번 게시물 댓글 개수: ${commentCount}`);
+                return {
+                  ...column,
+                  comments: commentCount
+                };
+              } catch (error) {
+                console.log(`❌ ${column.id}번 게시물 댓글 개수 가져오기 실패, 기본값 0 사용`);
+                return {
+                  ...column,
+                  comments: 0
+                };
+              }
             })
           );
           
@@ -1171,7 +1212,7 @@ export default function Column() {
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>{column.author}</span>
                       <div className="flex items-center space-x-3">
-                        <span>{column.comments} 댓글</span>
+                        <span>{column.comments || 0} 댓글</span>
                       </div>
                     </div>
                   </div>
@@ -1200,51 +1241,46 @@ export default function Column() {
                 {isLoggedIn && (
                   <button 
                     onClick={() => setIsWriteModalOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                   >
-                    글쓰기
+                    ✍️ 글쓰기
                   </button>
                 )}
               </div>
-              <div className="space-y-4" key={`columns-${forceRefresh}-${columns.length}-${Date.now()}-${Math.random()}`}>
+              {/* 갤러리 그리드 레이아웃 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" key={`columns-${forceRefresh}-${columns.length}-${Date.now()}-${Math.random()}`}>
                 {getVisibleColumns().map((column) => (
                   <div 
                     key={column.id} 
-                    className="bg-white rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                    className="bg-white rounded-xl shadow-lg border border-gray-100 cursor-pointer hover:shadow-2xl hover:scale-105 transition-all duration-300 ease-out overflow-hidden group"
                     onClick={() => handleColumnClick(column.id)}
                   >
-                    {/* 헤더 */}
-                    <div className="p-4 flex items-center justify-between relative" data-action-root={column.id}>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gray-200 rounded-full overflow-hidden">
-                          <img 
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${column.author}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`}
-                            alt={column.author}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // 이미지 로드 실패 시 기본 아바타로 대체
-                              const target = e.target as HTMLImageElement;
-                              target.src = `data:image/svg+xml;base64,${btoa(`
-                                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <rect width="40" height="40" rx="20" fill="#E5E7EB"/>
-                                  <text x="20" y="25" text-anchor="middle" font-family="Arial" font-size="16" fill="#6B7280">${column.author.charAt(0).toUpperCase()}</text>
-                                </svg>
-                              `)}`;
-                            }}
-                          />
+                    {/* 이미지 영역 - 상단 */}
+                    <div className="relative" data-action-root={column.id}>
+                      {/* 이미지 */}
+                      {(column.imageUrls || column.image_url) ? (
+                        <div className="aspect-video overflow-hidden">
+                          <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="small" />
                         </div>
-                        <div>
-                          <div className="font-semibold">{column.author}</div>
-                          <div className="text-sm text-gray-500">{column.date}</div>
+                      ) : (
+                        <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                          <div className="text-gray-400 text-center">
+                            <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <p className="text-sm">이미지 없음</p>
+                          </div>
                         </div>
-                      </div>
+                      )}
+                      
+                      {/* 메뉴 버튼 */}
                       <button
                         onClick={(e) => toggleActionMenu(e, column.id)}
-                        className="text-gray-400 hover:text-gray-600"
+                        className="absolute top-3 right-3 w-8 h-8 bg-white/80 hover:bg-white rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800 transition-all duration-200"
                         aria-haspopup="menu"
                         aria-expanded={openActionMenuId === column.id}
                       >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                         </svg>
                       </button>
@@ -1253,7 +1289,7 @@ export default function Column() {
                         <div
                           onClick={(e) => e.stopPropagation()}
                           role="menu"
-                          className="absolute right-4 top-12 z-20 w-36 bg-white border border-gray-200 rounded-md shadow-lg py-1"
+                          className="absolute right-3 top-12 z-20 w-32 bg-white border border-gray-200 rounded-lg shadow-lg py-1"
                         >
                           {currentUserId && column.user_id === currentUserId && (
                             <button
@@ -1285,47 +1321,54 @@ export default function Column() {
                       )}
                     </div>
 
-                    {/* 제목, 내용, 이미지를 가로로 배치 */}
-                    <div className="px-4">
-                      <div className="flex gap-6">
-                        {/* 텍스트 영역 - 왼쪽으로 이동 */}
-                        <div className="flex-1">
-                          <h2 className="text-xl font-bold mb-3">{column.title}</h2>
-                          
-                          {/* 내용 - 항상 표시 */}
-                          <div className="mb-4">
-                            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">
-                              {column.content && column.content.length > 200 
-                                ? column.content.substring(0, 200) + '...' 
-                                : column.content}
-                            </p>
-                          </div>
+                    {/* 카드 내용 */}
+                    <div className="p-4">
+                      {/* 작성자 */}
+                      <div className="flex items-center mb-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full overflow-hidden shadow-sm mr-2">
+                          <img 
+                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${column.author}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`}
+                            alt={column.author}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = `data:image/svg+xml;base64,${btoa(`
+                                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <rect width="32" height="32" rx="16" fill="#E5E7EB"/>
+                                  <text x="16" y="20" text-anchor="middle" font-family="Arial" font-size="12" fill="#6B7280">${column.author.charAt(0).toUpperCase()}</text>
+                                </svg>
+                              `)}`;
+                            }}
+                          />
                         </div>
-
-                        {/* 이미지 영역 - 오른쪽으로 이동 */}
-                        {(column.imageUrls || column.image_url) && (
-                          <div className="flex-shrink-0 pr-4">
-                            <ImageGallery imageUrl={column.imageUrls || column.image_url || ''} size="small" />
-                          </div>
-                        )}
+                        <span className="text-sm font-medium text-gray-700">{column.author}</span>
+                        <span className="text-xs text-gray-500 ml-2">{column.date}</span>
                       </div>
-                    </div>
 
-                    {/* 상호작용 버튼 */}
-                    <div className="px-4 pb-4">
-                      <div className="flex items-center justify-between mb-4">
+                      {/* 제목 */}
+                      <h2 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 leading-tight">
+                        {column.title}
+                      </h2>
+                      
+                      {/* 내용 */}
+                      <p className="text-sm text-gray-600 mb-4 line-clamp-3 leading-relaxed">
+                        {column.content && column.content.length > 100 
+                          ? column.content.substring(0, 100) + '...' 
+                          : column.content}
+                      </p>
+
+                      {/* 하단 통계 */}
+                      <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                         <div className="flex items-center space-x-4">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleLikeToggle(column.id);
                             }}
-                            className="text-gray-600 hover:text-red-500 transition-colors"
+                            className="flex items-center space-x-1 text-gray-500 hover:text-red-500 transition-colors"
                           >
                             <svg 
-                              className={`w-5 h-5 transition-all duration-200 ${
-                                column.isLiked ? 'fill-current text-red-500' : 'fill-none'
-                              }`}
+                              className={`w-4 h-4 ${column.isLiked ? 'fill-current text-red-500' : 'fill-none'}`}
                               stroke="currentColor" 
                               viewBox="0 0 24 24"
                             >
@@ -1342,33 +1385,20 @@ export default function Column() {
                               e.stopPropagation();
                               handleColumnClick(column.id);
                             }}
-                            className="text-gray-600 hover:text-blue-500 transition-colors"
+                            className="flex items-center space-x-1 text-gray-500 hover:text-blue-500 transition-colors"
                           >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
+                            <span className="text-xs">{column.comments || 0}</span>
                           </button>
                         </div>
-                      </div>
-
-                      {/* 통계 */}
-                      <div className="flex items-center space-x-4 text-sm text-gray-500">
-                        <span 
-                          className="cursor-pointer hover:text-blue-500 transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleColumnClick(column.id);
-                          }}
-                        >
-                          {column.comments} 댓글
-
+                        <span className="text-xs text-gray-400">
+                          👁️ {column.views?.toLocaleString() || '0'}
                         </span>
-                        <span>{column.views?.toLocaleString() || '0'} 조회</span>
                       </div>
-
-                      {/* 댓글 섹션 - 제거됨 */}
-                      {/* 댓글 입력 폼과 목록을 상세페이지로 이동 */}
                     </div>
+
                   </div>
                 ))}
               </div>
@@ -1489,8 +1519,6 @@ export default function Column() {
 
           </div>
 
-          {/* Sidebar */}
-          <Sidebar />
         </div>
       </div>
 
