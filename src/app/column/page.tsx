@@ -57,9 +57,9 @@ export default function Column() {
   const [currentSliderPage, setCurrentSliderPage] = useState(0);
   const sliderItemsPerPage = 3;
 
-  // 전체 칼럼 페이지네이션 상태
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  // 전체 칼럼 무한 스크롤 상태
+  const [displayedItemsCount, setDisplayedItemsCount] = useState(20);
+  const itemsPerLoad = 20;
 
   // 더보기 상태 관리
   const [expandedColumns, setExpandedColumns] = useState<number[]>([]);
@@ -79,8 +79,8 @@ export default function Column() {
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [columns, setColumns] = useState(mockColumns);
   
-  // columns 상태가 선언된 후에 totalPages 계산
-  const totalPages = Math.ceil(columns.length / itemsPerPage);
+  // columns 상태가 선언된 후에 hasMore 계산
+  const hasMore = displayedItemsCount < columns.length;
 
   // 댓글 개수 계산 함수 (백엔드 필드 우선 사용)
   const calculateCommentCount = (item: any): number => {
@@ -748,15 +748,13 @@ export default function Column() {
     return topTen.slice(startIndex, endIndex);
   };
 
-  // 전체 칼럼 페이지네이션 함수
+  // 전체 칼럼 무한 스크롤 함수
   const getVisibleColumns = () => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return memoizedColumns.slice(startIndex, endIndex);
+    return memoizedColumns.slice(0, displayedItemsCount);
   };
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+  const handleLoadMore = () => {
+    setDisplayedItemsCount(prev => prev + itemsPerLoad);
   };
 
   const handleColumnClick = (columnId: number) => {
@@ -1403,48 +1401,26 @@ export default function Column() {
                 ))}
               </div>
 
-              {/* 페이지네이션 */}
-              <div className="flex justify-center mt-8">
-                <div className="flex space-x-2">
+              {/* More 버튼 */}
+              {hasMore && (
+                <div className="flex justify-center mt-8">
                   <button 
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className={`px-4 py-2 border rounded-md ${
-                      currentPage === 1 
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                        : 'hover:bg-gray-50'
-                    }`}
+                    onClick={handleLoadMore}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                   >
-                    이전
-                  </button>
-                  
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => handlePageChange(page)}
-                      className={`px-4 py-2 border rounded-md ${
-                        currentPage === page
-                          ? 'bg-blue-600 text-white'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-
-                  <button 
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className={`px-4 py-2 border rounded-md ${
-                      currentPage === totalPages 
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    다음
+                    📖 더 보기
                   </button>
                 </div>
-              </div>
+              )}
+              
+              {/* 더 이상 로드할 게시물이 없을 때 */}
+              {!hasMore && columns.length > 0 && (
+                <div className="flex justify-center mt-8">
+                  <div className="text-gray-500 text-sm">
+                    모든 게시물을 불러왔습니다
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 글쓰기 모달 */}
